@@ -1,0 +1,42 @@
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel
+
+from app.models.db_connection import DbEngine
+
+
+class DbConnectionCreate(BaseModel):
+    name: str
+    engine: DbEngine
+    host: str
+    port: int
+    database: str
+    username: str | None = None
+    password: str | None = None
+    options: dict = {}
+
+
+class DbConnectionTestRequest(DbConnectionCreate):
+    pass
+
+
+class DbConnectionOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    engine: DbEngine
+    host: str
+    port: int
+    database: str
+    username: str | None
+    options: dict
+    schema_summary: dict | None
+    last_introspected_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConnectionTestResult(BaseModel):
+    success: bool
+    message: str

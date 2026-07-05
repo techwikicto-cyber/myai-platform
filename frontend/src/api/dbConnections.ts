@@ -1,0 +1,70 @@
+import { api } from './client'
+import type { DocumentDto } from './documents'
+
+export type DbEngine = 'postgres' | 'mysql' | 'mssql' | 'oracle' | 'mongodb'
+
+export interface DbConnectionCreate {
+  name: string
+  engine: DbEngine
+  host: string
+  port: number
+  database: string
+  username?: string
+  password?: string
+  options?: Record<string, unknown>
+}
+
+export interface DbConnectionDto {
+  id: string
+  name: string
+  engine: DbEngine
+  host: string
+  port: number
+  database: string
+  username: string | null
+  options: Record<string, unknown>
+  schema_summary: Record<string, unknown> | null
+  last_introspected_at: string | null
+  created_at: string
+}
+
+export interface TestResult {
+  success: boolean
+  message: string
+}
+
+export const dbConnectionsApi = {
+  list: (workspaceId: string) => api.get<DbConnectionDto[]>(`/workspaces/${workspaceId}/db-connections`),
+  create: (workspaceId: string, payload: DbConnectionCreate) =>
+    api.post<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections`, payload),
+  testNew: (workspaceId: string, payload: DbConnectionCreate) =>
+    api.post<TestResult>(`/workspaces/${workspaceId}/db-connections/test`, payload),
+  test: (workspaceId: string, id: string) =>
+    api.post<TestResult>(`/workspaces/${workspaceId}/db-connections/${id}/test`),
+  refreshSchema: (workspaceId: string, id: string) =>
+    api.post<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/refresh-schema`),
+  remove: (workspaceId: string, id: string) => api.delete<void>(`/workspaces/${workspaceId}/db-connections/${id}`),
+  listSchemaDocs: (workspaceId: string, id: string) =>
+    api.get<DocumentDto[]>(`/workspaces/${workspaceId}/db-connections/${id}/schema-docs`),
+  uploadSchemaDoc: (workspaceId: string, id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.upload<DocumentDto>(`/workspaces/${workspaceId}/db-connections/${id}/schema-docs`, formData)
+  },
+}
+
+export const DEFAULT_PORTS: Record<DbEngine, number> = {
+  postgres: 5432,
+  mysql: 3306,
+  mssql: 1433,
+  oracle: 1521,
+  mongodb: 27017,
+}
+
+export const ENGINE_LABELS: Record<DbEngine, string> = {
+  postgres: 'PostgreSQL',
+  mysql: 'MySQL',
+  mssql: 'Microsoft SQL Server',
+  oracle: 'Oracle',
+  mongodb: 'MongoDB',
+}

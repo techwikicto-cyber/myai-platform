@@ -50,6 +50,23 @@ async def stream_chat(
         yield {"type": "tool_calls", "tool_calls": list(tool_call_chunks.values())}
 
 
+async def complete_chat_with_tools(
+    config: LlmConfig, messages: list[dict], tools: list[dict]
+) -> tuple[str, list[dict]]:
+    """Non-streaming call used when a workspace has DB tools available, so we can decide
+    whether the model wants to call a tool before streaming the final answer to the user."""
+    client = get_client(config)
+    resp = await client.chat.completions.create(
+        model=config.model, messages=messages, tools=tools, tool_choice="auto", stream=False
+    )
+    message = resp.choices[0].message
+    tool_calls = [
+        {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
+        for tc in (message.tool_calls or [])
+    ]
+    return message.content or "", tool_calls
+
+
 async def complete_chat(config: LlmConfig, messages: list[dict]) -> str:
     """Non-streaming helper used for internal tasks like memory summarization."""
     client = get_client(config)

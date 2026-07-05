@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { workspacesApi } from '../api/workspaces'
 import { documentsApi, type DocumentDto } from '../api/documents'
+import DbConnectionsPanel from '../components/DbConnectionsPanel'
 import type { Workspace } from '../types'
 import { ApiError } from '../api/client'
 
@@ -22,7 +23,7 @@ const statusColors: Record<string, string> = {
 export default function WorkspaceSettingsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'general' | 'documents'>('general')
+  const [tab, setTab] = useState<'general' | 'documents' | 'database'>('general')
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [name, setName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -99,6 +100,9 @@ export default function WorkspaceSettingsPage() {
         </button>
         <button onClick={() => setTab('documents')} className={tabClass('documents')}>
           مستندات
+        </button>
+        <button onClick={() => setTab('database')} className={tabClass('database')}>
+          اتصال دیتابیس
         </button>
       </div>
 
@@ -180,6 +184,8 @@ export default function WorkspaceSettingsPage() {
           </div>
         </div>
       )}
+
+      {tab === 'database' && workspaceId && <DbConnectionsPanel workspaceId={workspaceId} />}
     </div>
   )
 }

@@ -13,8 +13,10 @@ from app.models.user import User, UserRole
 from app.models.workspace import Workspace
 from app.schemas.thread import MessageCreate, MessageOut, ThreadCreate, ThreadOut
 from app.services.chat_context import build_messages
+from app.services.db_chat import build_db_tools_and_context
+from app.services.db_query_tool import run_tool_call
 from app.services.embeddings import embed_texts
-from app.services.llm import LlmError, stream_chat
+from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
 from app.services.model_config import get_embedding_config, get_llm_config
 from app.services.rag import search_similar_chunks
 
@@ -105,25 +107,66 @@ async def send_message(
 
     llm_config = await get_llm_config(db)
 
-    extra_context = None
+    query_vector: list[float] | None = None
     try:
         embedding_config = await get_embedding_config(db)
         query_vector = (await embed_texts(embedding_config, [payload.content]))[0]
-        chunks = await search_similar_chunks(thread.workspace_id, query_vector, db)
-        if chunks:
-            extra_context = "\n\n---\n\n".join(c.content for c in chunks)
     except Exception:  # noqa: BLE001
-        extra_context = None  # RAG is best-effort; chat still works without it
+        query_vector = None  # RAG/DB-tooling is best-effort; chat still works without it
+
+    extra_context = None
+    if query_vector is not None:
+        try:
+            chunks = await search_similar_chunks(thread.workspace_id, query_vector, db)
+            if chunks:
+                extra_context = "\n\n---\n\n".join(c.content for c in chunks)
+        except Exception:  # noqa: BLE001
+            extra_context = None
+
+    db_tools, db_context, db_connections_by_name = await build_db_tools_and_context(
+        thread.workspace_id, query_vector, db
+    )
+    if db_context:
+        extra_context = f"{extra_context}\n\n{db_context}" if extra_context else db_context
 
     messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
     async def event_stream():
         full_content = ""
         try:
-            async for event in stream_chat(llm_config, messages):
-                if event["type"] == "token":
-                    full_content += event["content"]
-                    yield _sse({"type": "token", "content": event["content"]})
+            if db_tools:
+                content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
+                if tool_calls:
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": content or None,
+                            "tool_calls": [
+                                {
+                                    "id": tc["id"],
+                                    "type": "function",
+                                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                                }
+                                for tc in tool_calls
+                            ],
+                        }
+                    )
+                    for tc in tool_calls:
+                        tool_result = await run_tool_call(db_connections_by_name, tc["arguments"])
+                        messages.append({"role": "tool", "tool_call_id": tc["id"], "content": tool_result})
+
+                    async for event in stream_chat(llm_config, messages):
+                        if event["type"] == "token":
+                            full_content += event["content"]
+                            yield _sse({"type": "token", "content": event["content"]})
+                else:
+                    full_content = content
+                    yield _sse({"type": "token", "content": content})
+            else:
+                async for event in stream_chat(llm_config, messages):
+                    if event["type"] == "token":
+                        full_content += event["content"]
+                        yield _sse({"type": "token", "content": event["content"]})
         except LlmError as exc:
             yield _sse({"type": "error", "message": str(exc)})
             return
