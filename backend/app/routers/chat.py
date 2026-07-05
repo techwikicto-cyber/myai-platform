@@ -17,6 +17,7 @@ from app.services.db_chat import build_db_tools_and_context
 from app.services.db_query_tool import run_tool_call
 from app.services.embeddings import embed_texts
 from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
+from app.services.memory import maybe_summarize_history
 from app.services.model_config import get_embedding_config, get_llm_config
 from app.services.rag import search_similar_chunks
 
@@ -106,6 +107,9 @@ async def send_message(
     history = history_result.scalars().all()[:-1]  # exclude the just-added user message; passed separately
 
     llm_config = await get_llm_config(db)
+
+    history = await maybe_summarize_history(thread, history, llm_config)
+    await db.commit()
 
     query_vector: list[float] | None = None
     try:
