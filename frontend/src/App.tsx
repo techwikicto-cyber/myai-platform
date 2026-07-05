@@ -1,0 +1,39 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import LoginPage from './pages/LoginPage'
+import OnboardingPage from './pages/OnboardingPage'
+import HomePage from './pages/HomePage'
+import WorkspacePage from './pages/WorkspacePage'
+import AdminLayout from './pages/AdminLayout'
+import AdminUsersPage from './pages/AdminUsersPage'
+import AdminModelSettingsPage from './pages/AdminModelSettingsPage'
+import Layout from './components/Layout'
+import { AdminRoute, ProtectedRoute } from './components/ProtectedRoute'
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
+
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Layout />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/workspace/:workspaceId" element={<WorkspacePage />} />
+            <Route element={<AdminRoute />}>
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<Navigate to="users" replace />} />
+                <Route path="users" element={<AdminUsersPage />} />
+                <Route path="model-settings" element={<AdminModelSettingsPage />} />
+              </Route>
+            </Route>
+          </Route>
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
+export default App

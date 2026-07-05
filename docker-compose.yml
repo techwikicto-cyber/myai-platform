@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myai}
+      POSTGRES_DB: ${POSTGRES_DB:-myai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    restart: unless-stopped
+    command: ["--model-id", "BAAI/bge-m3"]
+    volumes:
+      - embedding_cache:/data
+    ports:
+      - "${EMBEDDING_PORT:-8081}:80"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-myai}:${POSTGRES_PASSWORD:-myai}@postgres:5432/${POSTGRES_DB:-myai}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-me-in-production-32bytes}
+      DEFAULT_EMBEDDING_BASE_URL: http://embedding:80
+      DEFAULT_EMBEDDING_API_TYPE: tei
+      DEFAULT_EMBEDDING_MODEL: bge-m3
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    command: ["./entrypoint.sh"]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  postgres_data:
+  embedding_cache:

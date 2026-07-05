@@ -1,0 +1,129 @@
+import json
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.deps import get_current_user, get_workspace_membership, require_workspace_member
+from app.models.thread import Message, MessageRole, Thread
+from app.models.user import User, UserRole
+from app.models.workspace import Workspace
+from app.schemas.thread import MessageCreate, MessageOut, ThreadCreate, ThreadOut
+from app.services.chat_context import build_messages
+from app.services.llm import LlmError, stream_chat
+from app.services.model_config import get_llm_config
+
+router = APIRouter(tags=["chat"])
+
+
+async def get_owned_thread(
+    thread_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Thread:
+    thread = await db.get(Thread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="گفتگو پیدا نشد")
+    if thread.user_id != user.id and user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="اجازه دسترسی به این گفتگو را ندارید")
+    if user.role != UserRole.admin:
+        membership = await get_workspace_membership(thread.workspace_id, user, db)
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="دیگر عضو این ورک‌اسپیس نیستید")
+    return thread
+
+
+@router.get("/api/workspaces/{workspace_id}/threads", response_model=list[ThreadOut])
+async def list_threads(
+    workspace_id: uuid.UUID,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    user, _ = membership
+    result = await db.execute(
+        select(Thread)
+        .where(Thread.workspace_id == workspace_id, Thread.user_id == user.id)
+        .order_by(Thread.updated_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/api/workspaces/{workspace_id}/threads", response_model=ThreadOut, status_code=status.HTTP_201_CREATED)
+async def create_thread(
+    workspace_id: uuid.UUID,
+    payload: ThreadCreate,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    user, _ = membership
+    thread = Thread(workspace_id=workspace_id, user_id=user.id, title=payload.title or "گفتگوی جدید")
+    db.add(thread)
+    await db.commit()
+    await db.refresh(thread)
+    return thread
+
+
+@router.delete("/api/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_thread(thread: Thread = Depends(get_owned_thread), db: AsyncSession = Depends(get_db)):
+    await db.delete(thread)
+    await db.commit()
+
+
+@router.get("/api/threads/{thread_id}/messages", response_model=list[MessageOut])
+async def list_messages(thread: Thread = Depends(get_owned_thread), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Message).where(Message.thread_id == thread.id).order_by(Message.created_at))
+    return result.scalars().all()
+
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/api/threads/{thread_id}/messages")
+async def send_message(
+    payload: MessageCreate,
+    thread: Thread = Depends(get_owned_thread),
+    db: AsyncSession = Depends(get_db),
+):
+    workspace = await db.get(Workspace, thread.workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ورک‌اسپیس پیدا نشد")
+
+    user_message = Message(thread_id=thread.id, role=MessageRole.user, content=payload.content)
+    db.add(user_message)
+    await db.commit()
+
+    history_result = await db.execute(
+        select(Message).where(Message.thread_id == thread.id).order_by(Message.created_at)
+    )
+    history = history_result.scalars().all()[:-1]  # exclude the just-added user message; passed separately
+
+    llm_config = await get_llm_config(db)
+    messages = build_messages(workspace, history, thread.memory_summary, None, payload.content)
+
+    async def event_stream():
+        full_content = ""
+        try:
+            async for event in stream_chat(llm_config, messages):
+                if event["type"] == "token":
+                    full_content += event["content"]
+                    yield _sse({"type": "token", "content": event["content"]})
+        except LlmError as exc:
+            yield _sse({"type": "error", "message": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001
+            yield _sse({"type": "error", "message": f"خطا در ارتباط با مدل زبانی: {exc}"})
+            return
+
+        assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
+        db.add(assistant_message)
+        if thread.title == "گفتگوی جدید":
+            thread.title = payload.content[:60]
+        await db.commit()
+        await db.refresh(assistant_message)
+        yield _sse({"type": "done", "message_id": str(assistant_message.id)})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
