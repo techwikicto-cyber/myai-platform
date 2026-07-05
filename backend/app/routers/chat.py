@@ -13,8 +13,10 @@ from app.models.user import User, UserRole
 from app.models.workspace import Workspace
 from app.schemas.thread import MessageCreate, MessageOut, ThreadCreate, ThreadOut
 from app.services.chat_context import build_messages
+from app.services.embeddings import embed_texts
 from app.services.llm import LlmError, stream_chat
-from app.services.model_config import get_llm_config
+from app.services.model_config import get_embedding_config, get_llm_config
+from app.services.rag import search_similar_chunks
 
 router = APIRouter(tags=["chat"])
 
@@ -102,7 +104,18 @@ async def send_message(
     history = history_result.scalars().all()[:-1]  # exclude the just-added user message; passed separately
 
     llm_config = await get_llm_config(db)
-    messages = build_messages(workspace, history, thread.memory_summary, None, payload.content)
+
+    extra_context = None
+    try:
+        embedding_config = await get_embedding_config(db)
+        query_vector = (await embed_texts(embedding_config, [payload.content]))[0]
+        chunks = await search_similar_chunks(thread.workspace_id, query_vector, db)
+        if chunks:
+            extra_context = "\n\n---\n\n".join(c.content for c in chunks)
+    except Exception:  # noqa: BLE001
+        extra_context = None  # RAG is best-effort; chat still works without it
+
+    messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
     async def event_stream():
         full_content = ""

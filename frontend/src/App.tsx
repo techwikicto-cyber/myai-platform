@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage'
 import OnboardingPage from './pages/OnboardingPage'
 import HomePage from './pages/HomePage'
 import WorkspacePage from './pages/WorkspacePage'
+import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
 import AdminLayout from './pages/AdminLayout'
 import AdminUsersPage from './pages/AdminUsersPage'
 import AdminModelSettingsPage from './pages/AdminModelSettingsPage'
@@ -20,6 +21,7 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/workspace/:workspaceId" element={<WorkspacePage />} />
+            <Route path="/workspace/:workspaceId/settings" element={<WorkspaceSettingsPage />} />
             <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Navigate to="users" replace />} />

@@ -1,0 +1,23 @@
+import { api } from './client'
+
+export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface DocumentDto {
+  id: string
+  filename: string
+  source_type: string
+  status: DocumentStatus
+  error_message: string | null
+  created_at: string
+}
+
+export const documentsApi = {
+  list: (workspaceId: string) => api.get<DocumentDto[]>(`/workspaces/${workspaceId}/documents`),
+  upload: (workspaceId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.upload<DocumentDto>(`/workspaces/${workspaceId}/documents`, formData)
+  },
+  remove: (workspaceId: string, documentId: string) =>
+    api.delete<void>(`/workspaces/${workspaceId}/documents/${documentId}`),
+}

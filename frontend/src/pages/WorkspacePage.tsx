@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { chatApi, streamMessage } from '../api/chat'
 import { workspacesApi } from '../api/workspaces'
 import MessageBubble from '../components/MessageBubble'
@@ -85,8 +85,13 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 py-3">
+      <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
         <h2 className="text-sm font-medium text-zinc-200">{workspace?.name}</h2>
+        {workspace?.is_manager && (
+          <Link to={`/workspace/${workspaceId}/settings`} className="text-xs text-zinc-400 hover:text-zinc-200">
+            تنظیمات ورک‌اسپیس
+          </Link>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
