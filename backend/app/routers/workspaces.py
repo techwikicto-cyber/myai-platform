@@ -56,7 +56,7 @@ async def create_workspace(
     payload: WorkspaceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     if user.role == UserRole.user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="اجازه ساخت ورک‌اسپیس ندارید")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="اجازه ساخت فضای کاری ندارید")
     slug = await _unique_slug(db, payload.name)
     workspace = Workspace(name=payload.name, slug=slug, created_by=user.id)
     db.add(workspace)
@@ -75,7 +75,7 @@ async def get_workspace(
 ):
     workspace = await db.get(Workspace, workspace_id)
     if not workspace:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ورک‌اسپیس پیدا نشد")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="فضای کاری پیدا نشد")
     _, is_manager = membership
     return WorkspaceOut.model_validate(workspace).model_copy(update={"is_manager": is_manager})
 
@@ -89,7 +89,7 @@ async def update_workspace(
 ):
     workspace = await db.get(Workspace, workspace_id)
     if not workspace:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ورک‌اسپیس پیدا نشد")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="فضای کاری پیدا نشد")
     if payload.name is not None:
         workspace.name = payload.name
     if payload.system_prompt is not None:
@@ -107,7 +107,7 @@ async def delete_workspace(
 ):
     workspace = await db.get(Workspace, workspace_id)
     if not workspace:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ورک‌اسپیس پیدا نشد")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="فضای کاری پیدا نشد")
     await db.delete(workspace)
     await db.commit()
 
@@ -146,7 +146,7 @@ async def add_member(
         )
     ).scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="کاربر قبلاً عضو این ورک‌اسپیس است")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="کاربر قبلاً عضو این فضای کاری است")
     member = WorkspaceMember(workspace_id=workspace_id, user_id=target.id, is_manager=payload.is_manager)
     db.add(member)
     await db.commit()

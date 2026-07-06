@@ -34,6 +34,7 @@
   --animate-fade-up: fade-up 0.35s ease-out both;
   --animate-fade-in: fade-in 0.4s ease-out both;
   --animate-blob: blob 14s ease-in-out infinite;
+  --animate-marquee: marquee 5s ease-in-out infinite alternate;
 }
 
 :root {
@@ -82,12 +83,36 @@ body {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-4px); opacity: 1; }
 }
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(0); }
+  80%  { transform: translateX(calc(-100% + 220px)); }
+  100% { transform: translateX(calc(-100% + 220px)); }
+}
 
 .typing-dot {
   animation: typing-dot 1.2s infinite ease-in-out;
 }
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+.animate-marquee {
+  animation: marquee 5s ease-in-out 1s infinite alternate;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 20%);
+}
 
 /* ---------- Markdown rendering inside chat bubbles ---------- */
 .markdown-body {

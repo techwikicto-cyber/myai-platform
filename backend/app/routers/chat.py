@@ -37,7 +37,7 @@ async def get_owned_thread(
     if user.role != UserRole.admin:
         membership = await get_workspace_membership(thread.workspace_id, user, db)
         if not membership:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="دیگر عضو این ورک‌اسپیس نیستید")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="دیگر عضو این فضای کاری نیستید")
     return thread
 
 
@@ -95,7 +95,7 @@ async def send_message(
 ):
     workspace = await db.get(Workspace, thread.workspace_id)
     if not workspace:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ورک‌اسپیس پیدا نشد")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="فضای کاری پیدا نشد")
 
     user_message = Message(thread_id=thread.id, role=MessageRole.user, content=payload.content)
     db.add(user_message)

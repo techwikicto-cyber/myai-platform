@@ -247,11 +247,11 @@ function ConnectionCard({
           <p className="text-sm font-medium text-foreground">سند آموزش اسکیما</p>
           <label
             className={clsx(
-              'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted',
+              'inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted',
               uploading && 'pointer-events-none opacity-50',
             )}
           >
-            {uploading ? <Spinner /> : <IconUpload />}
+            {uploading ? <Spinner /> : <IconUpload className="size-4 shrink-0" />}
             آپلود سند
             <input ref={fileInputRef} type="file" onChange={handleUploadSchemaDoc} disabled={uploading} className="hidden" />
           </label>
@@ -271,7 +271,7 @@ function ConnectionCard({
             {schemaDocs.map((d) => (
               <li key={d.id} className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2 text-foreground">
-                  <IconDocument className="text-muted-foreground" />
+                  <IconDocument className="size-4 shrink-0 text-muted-foreground" />
                   {d.filename}
                 </span>
                 <span className={d.status === 'ready' || d.status === 'failed' ? '' : 'animate-pulse'}>

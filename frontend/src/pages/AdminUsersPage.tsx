@@ -7,7 +7,7 @@ import { IconTrash } from '../components/icons'
 
 const roleLabels: Record<UserRole, string> = {
   admin: 'ادمین سیستم',
-  manager: 'ادمین ورک‌اسپیس',
+  manager: 'ادمین فضای کاری',
   user: 'کاربر عادی',
 }
 
@@ -59,7 +59,7 @@ export default function AdminUsersPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
       <Card>
-        <CardHeader title="افزودن کاربر" description="کاربر جدید با ایمیل و رمز عبور بسازید و نقشش را تعیین کنید" />
+        <CardHeader title="افزودن کاربر" description="کاربر جدید با ایمیل و رمز عبور بسازید و نقشش را مشخص کنید" />
         <form onSubmit={handleCreate} className="p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="ایمیل">

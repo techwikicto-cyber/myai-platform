@@ -7,7 +7,7 @@ export default function HomePage() {
         <IconChat className="size-6" />
       </div>
       <p className="text-sm text-muted-foreground">
-        یک ورک‌اسپیس از سایدبار انتخاب کنید یا ورک‌اسپیس جدیدی بسازید.
+        یک فضای کاری از سایدبار انتخاب کنید یا فضای کاری جدیدی بسازید.
       </p>
     </div>
   )

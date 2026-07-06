@@ -47,7 +47,7 @@ def build_tool_schema(connection_names: list[str], has_mongo: bool, has_sql: boo
         "function": {
             "name": TOOL_NAME,
             "description": (
-                "اجرای یک کوئری فقط-خواندنی روی دیتابیس متصل به این ورک‌اسپیس برای پاسخ به سوالات کاربر درباره داده‌ها. "
+                "اجرای یک کوئری فقط-خواندنی روی دیتابیس متصل به این فضای کاری برای پاسخ به سوالات کاربر درباره داده‌ها. "
                 + " ".join(query_desc)
             ),
             "parameters": {

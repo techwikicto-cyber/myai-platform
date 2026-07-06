@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(users.admin_router)
 app.include_router(workspaces.router)
 app.include_router(chat.router)
 app.include_router(documents.router)

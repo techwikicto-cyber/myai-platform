@@ -5,21 +5,36 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import require_admin
-from app.models.user import User
+from app.deps import get_current_user, require_admin
+from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.security import hash_password
 
-router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
+# Public router for listing users (accessible by admin + manager)
+router = APIRouter(prefix="/api/users", tags=["users"])
+
+# Admin-only sub-router for mutations
+admin_router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
 
 @router.get("", response_model=list[UserOut])
-async def list_users(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).order_by(User.created_at))
+async def list_users(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List users. Admin sees all; manager sees non-admin users to assign to workspaces."""
+    if user.role == UserRole.admin:
+        result = await db.execute(select(User).order_by(User.created_at))
+    elif user.role == UserRole.manager:
+        result = await db.execute(
+            select(User).where(User.role != UserRole.admin).order_by(User.created_at)
+        )
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="دسترسی ندارید")
     return result.scalars().all()
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@admin_router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
@@ -31,7 +46,7 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     return user
 
 
-@router.patch("/{user_id}", response_model=UserOut)
+@admin_router.patch("/{user_id}", response_model=UserOut)
 async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db)):
     user = await db.get(User, user_id)
     if not user:
@@ -47,10 +62,11 @@ async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession 
     return user
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@admin_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="کاربر پیدا نشد")
     await db.delete(user)
     await db.commit()
+

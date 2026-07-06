@@ -44,7 +44,7 @@ export default function WorkspacePage() {
     setMessages([])
     setThreadId(null)
     setError('')
-    init().catch((err) => setError(err instanceof Error ? err.message : 'خطا در بارگذاری ورک‌اسپیس'))
+    init().catch((err) => setError(err instanceof Error ? err.message : 'خطا در بارگذاری فضای کاری'))
 
     return () => {
       cancelled = true
@@ -96,7 +96,7 @@ export default function WorkspacePage() {
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <IconSettings />
-            تنظیمات ورک‌اسپیس
+            تنظیمات فضای کاری
           </Link>
         )}
       </header>
@@ -109,7 +109,7 @@ export default function WorkspacePage() {
                 <IconChat className="size-6" />
               </div>
               <p className="text-sm text-muted-foreground">
-                سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این ورک‌اسپیس داده می‌شود.
+                سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این فضای کاری داده می‌شود.
               </p>
             </div>
           )}

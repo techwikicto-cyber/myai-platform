@@ -103,3 +103,19 @@ export const IconSparkles = icon(
 )
 
 export const IconArrowRight = icon(<path d="M5 12h14M12 5l7 7-7 7" />)
+
+export const IconSearch = icon(
+  <>
+    <circle cx="11" cy="11" r="8" />
+    <path d="M21 21l-4.35-4.35" />
+  </>,
+)
+
+export const IconUserPlus = icon(
+  <>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M19 8v6" />
+    <path d="M22 11h-6" />
+  </>,
+)

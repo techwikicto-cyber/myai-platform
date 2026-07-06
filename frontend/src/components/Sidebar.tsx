@@ -8,7 +8,7 @@ import { IconChat, IconLogout, IconPlus, IconSettings, IconSparkles } from './ic
 
 const roleLabels: Record<string, string> = {
   admin: 'ادمین سیستم',
-  manager: 'ادمین ورک‌اسپیس',
+  manager: 'ادمین فضای کاری',
   user: 'کاربر',
 }
 
@@ -62,12 +62,12 @@ export default function Sidebar() {
 
       <div className="flex-1 overflow-y-auto px-3 py-3">
         <div className="mb-2 flex items-center justify-between px-2">
-          <span className="text-xs font-medium text-sidebar-muted">ورک‌اسپیس‌ها</span>
+          <span className="text-xs font-medium text-sidebar-muted">فضاهای کاری</span>
           {canCreateWorkspace && (
             <button
               onClick={() => setCreating((v) => !v)}
               className="flex size-6 items-center justify-center rounded-md text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              title="ورک‌اسپیس جدید"
+              title="فضای کاری جدید"
             >
               <IconPlus />
             </button>
@@ -81,7 +81,7 @@ export default function Sidebar() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Escape' && setCreating(false)}
-              placeholder="نام ورک‌اسپیس + Enter"
+              placeholder="نام فضای کاری + Enter"
               className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent px-3 py-2 text-sm text-sidebar-foreground outline-none placeholder:text-sidebar-muted/70 focus:border-primary"
             />
           </form>
@@ -96,7 +96,7 @@ export default function Sidebar() {
           ))}
           {workspaces.length === 0 && !creating && (
             <p className="px-2 py-4 text-center text-xs text-sidebar-muted">
-              {canCreateWorkspace ? 'با دکمه + یک ورک‌اسپیس بسازید' : 'هنوز به ورک‌اسپیسی دعوت نشده‌اید'}
+              {canCreateWorkspace ? 'با دکمه + یک فضای کاری بسازید' : 'هنوز به فضای کاری‌ای دعوت نشده‌اید'}
             </p>
           )}
         </nav>
