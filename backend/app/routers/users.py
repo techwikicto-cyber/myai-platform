@@ -1,12 +1,15 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user, require_admin
 from app.models.user import User, UserRole
+from app.models.workspace import Workspace
+from app.models.db_connection import DbConnection
+from app.models.document import Document
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.security import hash_password
 
@@ -67,6 +70,12 @@ async def delete_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="کاربر پیدا نشد")
+        
+    # Manually nullify foreign keys since the live database may lack ON DELETE SET NULL
+    await db.execute(update(Workspace).where(Workspace.created_by == user_id).values(created_by=None))
+    await db.execute(update(DbConnection).where(DbConnection.created_by == user_id).values(created_by=None))
+    await db.execute(update(Document).where(Document.uploaded_by == user_id).values(uploaded_by=None))
+    
     await db.delete(user)
     await db.commit()
 

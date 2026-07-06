@@ -43,7 +43,7 @@ class Document(Base):
         Enum(DocumentStatus, name="document_status"), default=DocumentStatus.pending, nullable=False
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
