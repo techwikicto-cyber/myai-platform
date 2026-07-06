@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import clsx from 'clsx'
 import {
   DEFAULT_PORTS,
   ENGINE_LABELS,
@@ -9,19 +10,12 @@ import {
 } from '../api/dbConnections'
 import type { DocumentDto } from '../api/documents'
 import { ApiError } from '../api/client'
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select, Spinner } from './ui'
+import { IconDatabase, IconDocument, IconPlus, IconTrash, IconUpload } from './icons'
 
 const ENGINES: DbEngine[] = ['postgres', 'mysql', 'mssql', 'oracle', 'mongodb']
 
-const inputClass =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500'
-
-function ConnectionForm({
-  workspaceId,
-  onCreated,
-}: {
-  workspaceId: string
-  onCreated: () => void
-}) {
+function ConnectionForm({ workspaceId, onCreated }: { workspaceId: string; onCreated: () => void }) {
   const [form, setForm] = useState<DbConnectionCreate>({
     name: '',
     engine: 'postgres',
@@ -68,99 +62,69 @@ function ConnectionForm({
   }
 
   return (
-    <form onSubmit={handleSave} className="mb-6 space-y-3 rounded-xl bg-zinc-800/50 p-5">
-      <h3 className="text-sm font-semibold text-zinc-200">اتصال جدید به دیتابیس</h3>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">نام اتصال</label>
-          <input
-            required
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className={inputClass}
-          />
+    <Card className="mb-6">
+      <CardHeader title="اتصال جدید به دیتابیس" description="پس از ذخیره، ساختار جدول‌ها به‌صورت خودکار خوانده می‌شود" />
+      <form onSubmit={handleSave} className="p-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="نام اتصال">
+            <Input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </Field>
+          <Field label="نوع دیتابیس">
+            <Select value={form.engine} onChange={(e) => updateEngine(e.target.value as DbEngine)}>
+              {ENGINES.map((e) => (
+                <option key={e} value={e}>
+                  {ENGINE_LABELS[e]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="هاست">
+            <Input required dir="ltr" value={form.host} onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))} />
+          </Field>
+          <Field label="پورت">
+            <Input
+              required
+              dir="ltr"
+              type="number"
+              value={form.port}
+              onChange={(e) => setForm((f) => ({ ...f, port: Number(e.target.value) }))}
+            />
+          </Field>
+          <Field label={form.engine === 'mongodb' ? 'نام دیتابیس' : 'نام دیتابیس / اسکیما'}>
+            <Input
+              required
+              dir="ltr"
+              value={form.database}
+              onChange={(e) => setForm((f) => ({ ...f, database: e.target.value }))}
+            />
+          </Field>
+          <Field label="نام کاربری" hint="توصیه: یک یوزر فقط-خواندنی (read-only) بسازید">
+            <Input dir="ltr" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
+          </Field>
+          <Field label="رمز عبور">
+            <Input
+              dir="ltr"
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            />
+          </Field>
         </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">نوع دیتابیس</label>
-          <select value={form.engine} onChange={(e) => updateEngine(e.target.value as DbEngine)} className={inputClass}>
-            {ENGINES.map((e) => (
-              <option key={e} value={e}>
-                {ENGINE_LABELS[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">هاست</label>
-          <input
-            required
-            value={form.host}
-            onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">پورت</label>
-          <input
-            required
-            type="number"
-            value={form.port}
-            onChange={(e) => setForm((f) => ({ ...f, port: Number(e.target.value) }))}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">
-            {form.engine === 'mongodb' ? 'نام دیتابیس' : 'نام دیتابیس / اسکیما'}
-          </label>
-          <input
-            required
-            value={form.database}
-            onChange={(e) => setForm((f) => ({ ...f, database: e.target.value }))}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">نام کاربری</label>
-          <input
-            value={form.username}
-            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">رمز عبور</label>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            className={inputClass}
-          />
-        </div>
-      </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={testing}
-          className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 disabled:opacity-50"
-        >
-          {testing ? 'در حال تست...' : 'تست اتصال'}
-        </button>
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {saving ? 'در حال ذخیره...' : 'ذخیره اتصال'}
-        </button>
-      </div>
-      {testResult && (
-        <p className={`text-xs ${testResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>{testResult.msg}</p>
-      )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
-    </form>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <Button type="button" variant="secondary" size="sm" onClick={handleTest} disabled={testing || !form.host}>
+            {testing && <Spinner />}
+            تست اتصال
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving && <Spinner />}
+            ذخیره اتصال
+          </Button>
+          {testResult && <Alert kind={testResult.ok ? 'success' : 'error'}>{testResult.msg}</Alert>}
+          {error && <Alert kind="error">{error}</Alert>}
+        </div>
+      </form>
+    </Card>
   )
 }
 
@@ -177,16 +141,16 @@ function ConnectionCard({
   const [busy, setBusy] = useState(false)
   const [schemaDocs, setSchemaDocs] = useState<DocumentDto[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  async function reloadDocs() {
+  const reloadDocs = useCallback(async () => {
     setSchemaDocs(await dbConnectionsApi.listSchemaDocs(workspaceId, connection.id))
-  }
+  }, [workspaceId, connection.id])
 
   useEffect(() => {
     reloadDocs()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connection.id])
+  }, [reloadDocs])
 
   async function handleTest() {
     setBusy(true)
@@ -219,85 +183,98 @@ function ConnectionCard({
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
+    setUploadError('')
     try {
       await dbConnectionsApi.uploadSchemaDoc(workspaceId, connection.id, file)
       await reloadDocs()
+    } catch (err) {
+      setUploadError(err instanceof ApiError ? err.message : 'خطا در آپلود')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  const tableCount = Array.isArray((connection.schema_summary as { tables?: unknown[] })?.tables)
-    ? ((connection.schema_summary as { tables: unknown[] }).tables.length)
-    : Array.isArray((connection.schema_summary as { collections?: unknown[] })?.collections)
-      ? ((connection.schema_summary as { collections: unknown[] }).collections.length)
-      : 0
+  const summary = connection.schema_summary as { tables?: unknown[]; collections?: unknown[] } | null
+  const tableCount = summary?.tables?.length ?? summary?.collections?.length ?? 0
 
   return (
-    <div className="mb-4 rounded-xl border border-zinc-800 p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <div>
-          <span className="font-medium text-zinc-100">{connection.name}</span>
-          <span className="mr-2 rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
-            {ENGINE_LABELS[connection.engine]}
-          </span>
+    <Card className="mb-4">
+      <div className="flex items-start justify-between gap-4 p-5 pb-0">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary-soft text-primary">
+            <IconDatabase className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground">{connection.name}</span>
+              <Badge kind="muted">{ENGINE_LABELS[connection.engine]}</Badge>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground" dir="ltr">
+              {connection.host}:{connection.port}/{connection.database}
+            </p>
+          </div>
         </div>
-        <button onClick={handleDelete} className="text-xs text-red-400 hover:underline">
-          حذف اتصال
-        </button>
+        <Button variant="destructive" size="sm" onClick={handleDelete} title="حذف اتصال">
+          <IconTrash />
+        </Button>
       </div>
-      <p className="mb-2 text-xs text-zinc-500">
-        {connection.host}:{connection.port} / {connection.database} —{' '}
-        {connection.last_introspected_at
-          ? `${tableCount} جدول/کالکشن شناسایی شد`
-          : 'اسکیما هنوز استخراج نشده'}
-      </p>
 
-      <div className="mb-3 flex items-center gap-3">
-        <button
-          onClick={handleTest}
-          disabled={busy}
-          className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 disabled:opacity-50"
-        >
+      <div className="flex flex-wrap items-center gap-3 p-5 pb-4">
+        <Button variant="secondary" size="sm" onClick={handleTest} disabled={busy}>
+          {busy && <Spinner />}
           تست اتصال
-        </button>
-        <button
-          onClick={handleRefreshSchema}
-          disabled={busy}
-          className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="secondary" size="sm" onClick={handleRefreshSchema} disabled={busy}>
           به‌روزرسانی اسکیما
-        </button>
-        {testResult && (
-          <span className={`text-xs ${testResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>{testResult.msg}</span>
-        )}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {connection.last_introspected_at ? `${tableCount} جدول/کالکشن شناسایی شد` : 'اسکیما هنوز استخراج نشده'}
+        </span>
+        {testResult && <Alert kind={testResult.ok ? 'success' : 'error'}>{testResult.msg}</Alert>}
       </div>
 
-      <div className="rounded-lg bg-zinc-900/50 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs text-zinc-400">سند آموزش معنای جدول‌ها/فیلدها (pdf, docx, xlsx, csv)</p>
-          <label className="cursor-pointer rounded-lg bg-indigo-600/80 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500">
-            {uploading ? 'در حال آپلود...' : 'آپلود سند'}
+      <div className="border-t border-border bg-muted/40 p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-medium text-foreground">سند آموزش اسکیما</p>
+          <label
+            className={clsx(
+              'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted',
+              uploading && 'pointer-events-none opacity-50',
+            )}
+          >
+            {uploading ? <Spinner /> : <IconUpload />}
+            آپلود سند
             <input ref={fileInputRef} type="file" onChange={handleUploadSchemaDoc} disabled={uploading} className="hidden" />
           </label>
         </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          فایلی (pdf/docx/xlsx/csv) آپلود کنید که معنی جدول‌ها و فیلدها را توضیح می‌دهد — مدل با کمک آن کوئری دقیق‌تری می‌سازد.
+        </p>
+        {uploadError && (
+          <div className="mb-3">
+            <Alert kind="error">{uploadError}</Alert>
+          </div>
+        )}
         {schemaDocs.length === 0 ? (
-          <p className="text-xs text-zinc-600">هنوز سندی آپلود نشده است</p>
+          <p className="text-xs text-muted-foreground/70">هنوز سندی آپلود نشده است</p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {schemaDocs.map((d) => (
-              <li key={d.id} className="flex items-center justify-between text-xs text-zinc-300">
-                <span>{d.filename}</span>
-                <span className={d.status === 'ready' ? 'text-emerald-400' : d.status === 'failed' ? 'text-red-400' : 'text-amber-400'}>
-                  {d.status}
+              <li key={d.id} className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-foreground">
+                  <IconDocument className="text-muted-foreground" />
+                  {d.filename}
                 </span>
+                <Badge kind={d.status === 'ready' ? 'success' : d.status === 'failed' ? 'error' : 'warning'}>
+                  {d.status === 'ready' ? 'آماده' : d.status === 'failed' ? 'خطا' : 'در حال پردازش'}
+                </Badge>
               </li>
             ))}
           </ul>
         )}
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -305,27 +282,24 @@ export default function DbConnectionsPanel({ workspaceId }: { workspaceId: strin
   const [connections, setConnections] = useState<DbConnectionDto[]>([])
   const [showForm, setShowForm] = useState(false)
 
-  async function reload() {
+  const reload = useCallback(async () => {
     setConnections(await dbConnectionsApi.list(workspaceId))
-  }
+  }, [workspaceId])
 
   useEffect(() => {
     reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId])
+  }, [reload])
 
   return (
     <div className="mx-auto w-full max-w-2xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-zinc-400">
-          پس از اتصال، یک سند توضیحی درباره معنای جدول‌ها/فیلدها آپلود کنید تا بتوانید با زبان طبیعی از داده‌ها سوال بپرسید.
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          دیتابیس را وصل کنید، سند توضیح اسکیما آپلود کنید و بعد در چت با زبان طبیعی از داده‌ها سوال بپرسید.
         </p>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600"
-        >
-          {showForm ? 'بستن فرم' : '+ اتصال جدید'}
-        </button>
+        <Button variant="secondary" size="sm" onClick={() => setShowForm((v) => !v)}>
+          <IconPlus />
+          {showForm ? 'بستن فرم' : 'اتصال جدید'}
+        </Button>
       </div>
 
       {showForm && (
@@ -342,9 +316,10 @@ export default function DbConnectionsPanel({ workspaceId }: { workspaceId: strin
         <ConnectionCard key={c.id} workspaceId={workspaceId} connection={c} onChanged={reload} />
       ))}
       {connections.length === 0 && !showForm && (
-        <p className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
-          هنوز اتصال دیتابیسی ثبت نشده است
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-12 text-center">
+          <IconDatabase className="size-8 text-muted-foreground/50" />
+          <p className="text-sm text-muted-foreground">هنوز اتصال دیتابیسی ثبت نشده است</p>
+        </div>
       )}
     </div>
   )

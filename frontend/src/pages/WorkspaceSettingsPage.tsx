@@ -1,42 +1,38 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import clsx from 'clsx'
 import { workspacesApi } from '../api/workspaces'
 import { documentsApi, type DocumentDto } from '../api/documents'
 import DbConnectionsPanel from '../components/DbConnectionsPanel'
-import type { Workspace } from '../types'
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, Spinner, Textarea } from '../components/ui'
+import { IconDatabase, IconDocument, IconSettings, IconTrash, IconUpload } from '../components/icons'
 import { ApiError } from '../api/client'
+import type { Workspace } from '../types'
 
-const statusLabels: Record<string, string> = {
-  pending: 'در صف',
-  processing: 'در حال پردازش',
-  ready: 'آماده',
-  failed: 'خطا',
-}
-
-const statusColors: Record<string, string> = {
-  pending: 'text-zinc-400',
-  processing: 'text-amber-400',
-  ready: 'text-emerald-400',
-  failed: 'text-red-400',
+const statusBadge: Record<string, { kind: 'success' | 'error' | 'warning' | 'muted'; label: string }> = {
+  pending: { kind: 'muted', label: 'در صف' },
+  processing: { kind: 'warning', label: 'در حال پردازش' },
+  ready: { kind: 'success', label: 'آماده' },
+  failed: { kind: 'error', label: 'خطا' },
 }
 
 export default function WorkspaceSettingsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
-  const navigate = useNavigate()
   const [tab, setTab] = useState<'general' | 'documents' | 'database'>('general')
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [name, setName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState('')
   const [documents, setDocuments] = useState<DocumentDto[]>([])
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  async function reloadDocuments() {
+  const reloadDocuments = useCallback(async () => {
     if (!workspaceId) return
     setDocuments(await documentsApi.list(workspaceId))
-  }
+  }, [workspaceId])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -46,14 +42,17 @@ export default function WorkspaceSettingsPage() {
       setSystemPrompt(ws.system_prompt || '')
     })
     reloadDocuments()
-  }, [workspaceId])
+  }, [workspaceId, reloadDocuments])
 
   async function handleSaveGeneral(e: React.FormEvent) {
     e.preventDefault()
     if (!workspaceId) return
     setSaving(true)
+    setSavedMsg('')
     try {
       await workspacesApi.update(workspaceId, { name, system_prompt: systemPrompt })
+      setSavedMsg('ذخیره شد')
+      setTimeout(() => setSavedMsg(''), 3000)
     } finally {
       setSaving(false)
     }
@@ -81,107 +80,133 @@ export default function WorkspaceSettingsPage() {
     await reloadDocuments()
   }
 
-  const tabClass = (t: string) =>
-    `rounded-lg px-3 py-1.5 text-sm ${tab === t ? 'bg-indigo-600/20 text-indigo-300' : 'text-zinc-400 hover:bg-zinc-800'}`
+  const tabs = [
+    { key: 'general' as const, label: 'عمومی', icon: <IconSettings /> },
+    { key: 'documents' as const, label: 'مستندات', icon: <IconDocument /> },
+    { key: 'database' as const, label: 'اتصال دیتابیس', icon: <IconDatabase /> },
+  ]
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-6 py-3">
-        <button onClick={() => navigate(`/workspace/${workspaceId}`)} className="text-sm text-zinc-400 hover:text-zinc-200">
-          ← بازگشت به چت
-        </button>
-        <span className="mx-2 text-zinc-600">|</span>
-        <h2 className="text-sm font-medium text-zinc-200">تنظیمات {workspace?.name}</h2>
-      </div>
-
-      <div className="flex gap-2 border-b border-zinc-800 px-6 py-2">
-        <button onClick={() => setTab('general')} className={tabClass('general')}>
-          عمومی
-        </button>
-        <button onClick={() => setTab('documents')} className={tabClass('documents')}>
-          مستندات
-        </button>
-        <button onClick={() => setTab('database')} className={tabClass('database')}>
-          اتصال دیتابیس
-        </button>
-      </div>
+      <header className="border-b border-border bg-card px-6 pt-5">
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-bold text-foreground">تنظیمات {workspace?.name}</h1>
+          <Link to={`/workspace/${workspaceId}`} className="text-sm text-primary hover:underline">
+            بازگشت به گفتگو
+          </Link>
+        </div>
+        <div className="mt-3 flex gap-1 pb-3">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                tab === t.key
+                  ? 'bg-primary-soft font-medium text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </header>
 
       {tab === 'general' && (
-        <form onSubmit={handleSaveGeneral} className="mx-auto w-full max-w-xl space-y-4 p-6">
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">نام ورک‌اسپیس</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">دستورالعمل سیستمی (System Prompt)</label>
-            <textarea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              rows={6}
-              placeholder="مثلا: تو دستیار پشتیبانی شرکت آکمه هستی..."
-              className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {saving ? 'در حال ذخیره...' : 'ذخیره'}
-          </button>
-        </form>
+        <div className="mx-auto w-full max-w-2xl p-6">
+          <Card>
+            <CardHeader title="تنظیمات عمومی" description="نام و دستورالعمل ثابت این ورک‌اسپیس" />
+            <form onSubmit={handleSaveGeneral} className="space-y-4 p-6">
+              <Field label="نام ورک‌اسپیس">
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+              <Field
+                label="دستورالعمل سیستمی (System Prompt)"
+                hint="این متن در ابتدای هر گفتگو به مدل داده می‌شود و رفتار آن را تعیین می‌کند"
+              >
+                <Textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  rows={6}
+                  placeholder="مثلا: تو دستیار پشتیبانی شرکت ما هستی. همیشه مودب و دقیق پاسخ بده…"
+                  className="resize-none"
+                />
+              </Field>
+              <div className="flex items-center gap-3">
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner />}
+                  ذخیره
+                </Button>
+                {savedMsg && <Alert kind="success">{savedMsg}</Alert>}
+              </div>
+            </form>
+          </Card>
+        </div>
       )}
 
       {tab === 'documents' && (
         <div className="mx-auto w-full max-w-2xl p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-zinc-400">فایل‌های pdf، docx، xlsx، csv، txt و md پشتیبانی می‌شوند.</p>
-            <label className="cursor-pointer rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-              {uploading ? 'در حال آپلود...' : 'آپلود سند'}
-              <input ref={fileInputRef} type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
-            </label>
-          </div>
-          {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
-          <div className="overflow-hidden rounded-xl border border-zinc-800">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-800/70 text-zinc-400">
-                <tr>
-                  <th className="px-4 py-2 text-right">نام فایل</th>
-                  <th className="px-4 py-2 text-right">وضعیت</th>
-                  <th className="px-4 py-2 text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map((d) => (
-                  <tr key={d.id} className="border-t border-zinc-800">
-                    <td className="px-4 py-2 text-zinc-200">{d.filename}</td>
-                    <td className={`px-4 py-2 ${statusColors[d.status]}`}>
-                      {statusLabels[d.status]}
-                      {d.status === 'failed' && d.error_message && (
-                        <span className="mr-2 text-xs text-zinc-500">({d.error_message})</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-left">
-                      <button onClick={() => handleDeleteDoc(d.id)} className="text-xs text-red-400 hover:underline">
-                        حذف
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {documents.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-zinc-500">
-                      هنوز سندی آپلود نشده است
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <Card>
+            <CardHeader
+              title="مستندات ورک‌اسپیس"
+              description="فایل‌های pdf، docx، xlsx، csv، txt و md — بعد از پردازش، چت بر اساس محتوای آن‌ها پاسخ می‌دهد"
+              action={
+                <label
+                  className={clsx(
+                    'inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover',
+                    uploading && 'pointer-events-none opacity-50',
+                  )}
+                >
+                  {uploading ? <Spinner /> : <IconUpload />}
+                  آپلود سند
+                  <input ref={fileInputRef} type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
+                </label>
+              }
+            />
+            <div className="p-6 pt-4">
+              {error && (
+                <div className="mb-4">
+                  <Alert kind="error">{error}</Alert>
+                </div>
+              )}
+              {documents.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-12 text-center">
+                  <IconDocument className="size-8 text-muted-foreground/50" />
+                  <p className="text-sm text-muted-foreground">هنوز سندی آپلود نشده است</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {documents.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between gap-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <IconDocument className="text-muted-foreground" />
+                        <span className="truncate text-sm font-medium text-foreground">{d.filename}</span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <Badge kind={statusBadge[d.status].kind}>{statusBadge[d.status].label}</Badge>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteDoc(d.id)} title="حذف سند">
+                          <IconTrash />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {documents.some((d) => d.status === 'failed' && d.error_message) && (
+                <div className="mt-3 space-y-2">
+                  {documents
+                    .filter((d) => d.status === 'failed' && d.error_message)
+                    .map((d) => (
+                      <Alert key={d.id} kind="error">
+                        {d.filename}: {d.error_message}
+                      </Alert>
+                    ))}
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
       )}
 

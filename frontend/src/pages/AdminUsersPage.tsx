@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { usersApi } from '../api/users'
 import type { User, UserRole } from '../types'
 import { ApiError } from '../api/client'
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select } from '../components/ui'
+import { IconTrash } from '../components/icons'
 
 const roleLabels: Record<UserRole, string> = {
   admin: 'ادمین سیستم',
@@ -55,91 +57,75 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl p-8">
-      <h1 className="mb-6 text-xl font-semibold text-zinc-100">مدیریت کاربران</h1>
+    <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
+      <Card>
+        <CardHeader title="افزودن کاربر" description="کاربر جدید با ایمیل و رمز عبور بسازید و نقشش را تعیین کنید" />
+        <form onSubmit={handleCreate} className="p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="ایمیل">
+              <Input type="email" dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="رمز عبور">
+              <Input type="password" dir="ltr" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            </Field>
+            <Field label="نقش">
+              <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+                <option value="user">{roleLabels.user}</option>
+                <option value="manager">{roleLabels.manager}</option>
+                <option value="admin">{roleLabels.admin}</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <Button type="submit">ساخت کاربر</Button>
+            {error && <Alert kind="error">{error}</Alert>}
+          </div>
+        </form>
+      </Card>
 
-      <form onSubmit={handleCreate} className="mb-8 flex flex-wrap items-end gap-3 rounded-xl bg-zinc-800/50 p-4">
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">ایمیل</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-indigo-500"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">رمز عبور</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-indigo-500"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">نقش</label>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole)}
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-indigo-500"
-          >
-            <option value="user">کاربر عادی</option>
-            <option value="manager">ادمین ورک‌اسپیس</option>
-            <option value="admin">ادمین سیستم</option>
-          </select>
-        </div>
-        <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">
-          ساخت کاربر
-        </button>
-        {error && <p className="w-full text-sm text-red-400">{error}</p>}
-      </form>
-
-      <div className="overflow-hidden rounded-xl border border-zinc-800">
+      <Card>
+        <CardHeader title="کاربران" description={`${users.length} کاربر ثبت شده`} />
         <table className="w-full text-sm">
-          <thead className="bg-zinc-800/70 text-zinc-400">
-            <tr>
-              <th className="px-4 py-2 text-right">ایمیل</th>
-              <th className="px-4 py-2 text-right">نقش</th>
-              <th className="px-4 py-2 text-right">وضعیت</th>
-              <th className="px-4 py-2 text-right"></th>
+          <thead>
+            <tr className="border-b border-border text-xs text-muted-foreground">
+              <th className="px-6 py-3 text-right font-medium">ایمیل</th>
+              <th className="px-6 py-3 text-right font-medium">نقش</th>
+              <th className="px-6 py-3 text-right font-medium">وضعیت</th>
+              <th className="px-6 py-3" />
             </tr>
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-t border-zinc-800">
-                <td className="px-4 py-2 text-zinc-200">{u.email}</td>
-                <td className="px-4 py-2">
-                  <select
+              <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/40">
+                <td className="px-6 py-3 font-medium text-foreground" dir="ltr">
+                  {u.email}
+                </td>
+                <td className="px-6 py-3">
+                  <Select
+                    className="h-8 w-44 text-xs"
                     value={u.role}
                     onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                    className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
                   >
                     <option value="user">{roleLabels.user}</option>
                     <option value="manager">{roleLabels.manager}</option>
                     <option value="admin">{roleLabels.admin}</option>
-                  </select>
+                  </Select>
                 </td>
-                <td className="px-4 py-2">
-                  <button
-                    onClick={() => handleToggleActive(u)}
-                    className={`rounded px-2 py-1 text-xs ${u.is_active ? 'bg-emerald-600/20 text-emerald-400' : 'bg-zinc-700 text-zinc-400'}`}
-                  >
-                    {u.is_active ? 'فعال' : 'غیرفعال'}
+                <td className="px-6 py-3">
+                  <button onClick={() => handleToggleActive(u)} title="برای تغییر وضعیت کلیک کنید">
+                    <Badge kind={u.is_active ? 'success' : 'muted'}>{u.is_active ? 'فعال' : 'غیرفعال'}</Badge>
                   </button>
                 </td>
-                <td className="px-4 py-2 text-left">
-                  <button onClick={() => handleDelete(u.id)} className="text-xs text-red-400 hover:underline">
-                    حذف
-                  </button>
+                <td className="px-6 py-3 text-left">
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(u.id)} title="حذف کاربر">
+                    <IconTrash />
+                  </Button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
     </div>
   )
 }

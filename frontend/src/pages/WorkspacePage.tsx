@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { chatApi, streamMessage } from '../api/chat'
 import { workspacesApi } from '../api/workspaces'
 import MessageBubble from '../components/MessageBubble'
+import { Alert, Button } from '../components/ui'
+import { IconChat, IconSend, IconSettings } from '../components/icons'
 import type { ChatMessage, Workspace } from '../types'
 
 export default function WorkspacePage() {
@@ -41,6 +43,7 @@ export default function WorkspacePage() {
 
     setMessages([])
     setThreadId(null)
+    setError('')
     init().catch((err) => setError(err instanceof Error ? err.message : 'خطا در بارگذاری ورک‌اسپیس'))
 
     return () => {
@@ -85,52 +88,70 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
-        <h2 className="text-sm font-medium text-zinc-200">{workspace?.name}</h2>
+      <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
+        <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
         {workspace?.is_manager && (
-          <Link to={`/workspace/${workspaceId}/settings`} className="text-xs text-zinc-400 hover:text-zinc-200">
+          <Link
+            to={`/workspace/${workspaceId}/settings`}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <IconSettings />
             تنظیمات ورک‌اسپیس
           </Link>
         )}
-      </div>
+      </header>
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
-        {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-            پیامی وجود ندارد. یک سوال بپرس تا شروع کنیم.
-          </div>
-        )}
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
-        ))}
-      </div>
-
-      {error && <p className="px-6 pb-2 text-xs text-red-400">{error}</p>}
-
-      <form onSubmit={handleSend} className="border-t border-zinc-800 p-4">
-        <div className="flex items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-800 p-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSend(e)
-              }
-            }}
-            rows={1}
-            placeholder="پیام خود را بنویسید..."
-            className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-          />
-          <button
-            type="submit"
-            disabled={sending || !input.trim()}
-            className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
-          >
-            ارسال
-          </button>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
+          {messages.length === 0 && !error && (
+            <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+              <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+                <IconChat className="size-6" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این ورک‌اسپیس داده می‌شود.
+              </p>
+            </div>
+          )}
+          {messages.map((m) => (
+            <MessageBubble key={m.id} message={m} />
+          ))}
         </div>
-      </form>
+      </div>
+
+      <div className="border-t border-border bg-card px-6 py-4">
+        <div className="mx-auto max-w-3xl">
+          {error && (
+            <div className="mb-3">
+              <Alert kind="error">{error}</Alert>
+            </div>
+          )}
+          <form onSubmit={handleSend}>
+            <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 transition-colors focus-within:border-primary">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSend(e)
+                  }
+                }}
+                rows={1}
+                placeholder="پیام خود را بنویسید…"
+                className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+              />
+              <Button type="submit" size="sm" disabled={sending || !input.trim()} className="h-9">
+                <IconSend />
+                ارسال
+              </Button>
+            </div>
+            <p className="mt-1.5 px-1 text-[11px] text-muted-foreground/70">
+              Enter برای ارسال — Shift+Enter برای خط جدید
+            </p>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }

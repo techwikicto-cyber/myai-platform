@@ -13,6 +13,9 @@ export interface ModelSettingsIn {
 export const settingsApi = {
   get: () => api.get<ModelSettingsOut>('/settings/model'),
   update: (payload: ModelSettingsIn) => api.put<ModelSettingsOut>('/settings/model', payload),
-  testLlm: () => api.post<{ success: boolean; message: string }>('/settings/model/test-llm'),
-  testEmbedding: () => api.post<{ success: boolean; message: string }>('/settings/model/test-embedding'),
+  // Passing the form values tests them directly, without requiring a save first
+  testLlm: (payload?: ModelSettingsIn) =>
+    api.post<{ success: boolean; message: string }>('/settings/model/test-llm', payload),
+  testEmbedding: (payload?: ModelSettingsIn) =>
+    api.post<{ success: boolean; message: string }>('/settings/model/test-embedding', payload),
 }

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { authApi } from '../api/auth'
 import { useAuthStore } from '../store/auth'
 import { ApiError } from '../api/client'
+import AuthLayout from '../components/AuthLayout'
+import { Alert, Button, Field, Input, Spinner } from '../components/ui'
 
 export default function OnboardingPage() {
   const [email, setEmail] = useState('')
@@ -34,36 +36,35 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-zinc-950">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl bg-zinc-900 p-8 shadow-xl">
-        <h1 className="mb-2 text-xl font-semibold text-zinc-100">راه‌اندازی اولیه</h1>
-        <p className="mb-6 text-sm text-zinc-400">حساب ادمین سیستم را بسازید تا شروع کنید.</p>
-        <label className="mb-1 block text-sm text-zinc-300">ایمیل</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
-        />
-        <label className="mb-1 block text-sm text-zinc-300">رمز عبور</label>
-        <input
-          type="password"
-          required
-          minLength={8}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
-        />
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-indigo-600 py-2 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {loading ? 'در حال ساخت...' : 'ساخت حساب ادمین'}
-        </button>
+    <AuthLayout title="راه‌اندازی اولیه" subtitle="حساب ادمین سیستم را بسازید تا شروع کنیم">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="ایمیل">
+          <Input
+            type="email"
+            required
+            autoComplete="email"
+            dir="ltr"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+        <Field label="رمز عبور" hint="حداقل ۸ کاراکتر">
+          <Input
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            dir="ltr"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+        {error && <Alert kind="error">{error}</Alert>}
+        <Button type="submit" disabled={loading} className="w-full">
+          {loading && <Spinner />}
+          ساخت حساب ادمین
+        </Button>
       </form>
-    </div>
+    </AuthLayout>
   )
 }
