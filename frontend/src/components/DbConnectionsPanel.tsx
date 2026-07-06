@@ -62,9 +62,8 @@ function ConnectionForm({ workspaceId, onCreated }: { workspaceId: string; onCre
   }
 
   return (
-    <Card className="mb-6">
-      <CardHeader title="اتصال جدید به دیتابیس" description="پس از ذخیره، ساختار جدول‌ها به‌صورت خودکار خوانده می‌شود" />
-      <form onSubmit={handleSave} className="p-6">
+    <>
+      <form onSubmit={handleSave} className="p-6 pt-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="نام اتصال">
             <Input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
@@ -124,7 +123,10 @@ function ConnectionForm({ workspaceId, onCreated }: { workspaceId: string; onCre
           {error && <Alert kind="error">{error}</Alert>}
         </div>
       </form>
-    </Card>
+      <div className="mx-6 mb-4 rounded-lg bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+        پس از ذخیره، ساختار جدول‌ها به‌صورت خودکار خوانده می‌شود.
+      </div>
+    </>
   )
 }
 
@@ -302,25 +304,37 @@ export default function DbConnectionsPanel({ workspaceId }: { workspaceId: strin
 
   return (
     <div className="mx-auto w-full max-w-2xl p-6">
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <p className="text-sm text-muted-foreground">
-          دیتابیس را وصل کنید، سند توضیح اسکیما آپلود کنید و بعد در چت با زبان طبیعی از داده‌ها سوال بپرسید.
-        </p>
-        <Button variant="secondary" size="sm" onClick={() => setShowForm((v) => !v)}>
-          <IconPlus />
-          {showForm ? 'بستن فرم' : 'اتصال جدید'}
-        </Button>
-      </div>
-
-      {showForm && (
-        <ConnectionForm
-          workspaceId={workspaceId}
-          onCreated={() => {
-            setShowForm(false)
-            reload()
-          }}
+      <Card className="mb-6">
+        <CardHeader
+          title="اتصال‌های دیتابیس"
+          description="دیتابیس را وصل کنید، سند توضیح اسکیما آپلود کنید و بعد در چت با زبان طبیعی از داده‌ها سوال بپرسید."
+          action={
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              className={clsx(
+                'inline-flex h-9 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm font-medium shadow-sm transition-colors',
+                showForm
+                  ? 'bg-muted text-foreground hover:bg-muted/80'
+                  : 'bg-primary text-primary-foreground hover:bg-primary-hover',
+              )}
+            >
+              <IconPlus />
+              {showForm ? 'بستن فرم' : 'اتصال جدید'}
+            </button>
+          }
         />
-      )}
+        <div className="border-t border-border">
+          {showForm && (
+            <ConnectionForm
+              workspaceId={workspaceId}
+              onCreated={() => {
+                setShowForm(false)
+                reload()
+              }}
+            />
+          )}
+        </div>
+      </Card>
 
       {connections.map((c) => (
         <ConnectionCard key={c.id} workspaceId={workspaceId} connection={c} onChanged={reload} />

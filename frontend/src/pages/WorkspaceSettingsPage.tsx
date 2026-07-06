@@ -380,7 +380,19 @@ export default function WorkspaceSettingsPage() {
             />
             <div className="p-6 pt-4">
               <div className="relative mb-4">
-                <IconSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.35-4.35" />
+                </svg>
                 <input
                   type="text"
                   value={userSearch}
