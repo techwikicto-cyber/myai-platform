@@ -3,13 +3,32 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import AsyncSessionLocal
 from app.models.document import Document, DocumentChunk, DocumentStatus
 from app.services.chunking import chunk_text, estimate_tokens
 from app.services.embeddings import embed_texts
-from app.services.model_config import EmbeddingConfig
+from app.services.model_config import EmbeddingConfig, get_embedding_config
 from app.services.parsers import ParseError, extract_text
 
 EMBED_BATCH_SIZE = 32
+
+
+async def process_document_background(document_id: uuid.UUID, content: bytes) -> None:
+    """Runs after the upload request has already returned, with its own DB session,
+    so large files don't block the HTTP request and multiple uploads can queue up.
+    The UI polls the document list to observe pending -> processing -> ready/failed."""
+    async with AsyncSessionLocal() as db:
+        document = await db.get(Document, document_id)
+        if not document:
+            return
+        try:
+            embedding_config = await get_embedding_config(db)
+        except Exception as exc:  # noqa: BLE001
+            document.status = DocumentStatus.failed
+            document.error_message = str(exc)
+            await db.commit()
+            return
+        await process_document(document, content, embedding_config, db)
 
 
 async def process_document(

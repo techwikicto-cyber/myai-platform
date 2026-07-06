@@ -17,13 +17,10 @@ services:
       retries: 10
 
   embedding:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    image: beloved70020/bge-m3:latest
     restart: unless-stopped
-    command: ["--model-id", "BAAI/bge-m3"]
-    volumes:
-      - embedding_cache:/data
     ports:
-      - "${EMBEDDING_PORT:-8081}:80"
+      - "${EMBEDDING_PORT:-8006}:8080"
 
   backend:
     build: ./backend
@@ -35,9 +32,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-myai}:${POSTGRES_PASSWORD:-myai}@postgres:5432/${POSTGRES_DB:-myai}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-me-in-production-32bytes}
-      DEFAULT_EMBEDDING_BASE_URL: http://embedding:80
-      DEFAULT_EMBEDDING_API_TYPE: tei
-      DEFAULT_EMBEDDING_MODEL: bge-m3
+      DEFAULT_EMBEDDING_BASE_URL: http://embedding:8080/v1
+      DEFAULT_EMBEDDING_API_TYPE: openai
+      DEFAULT_EMBEDDING_MODEL: BAAI/bge-m3
       CORS_ORIGINS: '["*"]'
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -53,4 +50,3 @@ services:
 
 volumes:
   postgres_data:
-  embedding_cache:

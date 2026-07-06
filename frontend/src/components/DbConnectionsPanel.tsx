@@ -152,6 +152,14 @@ function ConnectionCard({
     reloadDocs()
   }, [reloadDocs])
 
+  // Schema docs also process in the background — poll until they settle.
+  const hasInFlight = schemaDocs.some((d) => d.status === 'pending' || d.status === 'processing')
+  useEffect(() => {
+    if (!hasInFlight) return
+    const timer = setInterval(reloadDocs, 3000)
+    return () => clearInterval(timer)
+  }, [hasInFlight, reloadDocs])
+
   async function handleTest() {
     setBusy(true)
     setTestResult(null)
@@ -266,9 +274,11 @@ function ConnectionCard({
                   <IconDocument className="text-muted-foreground" />
                   {d.filename}
                 </span>
-                <Badge kind={d.status === 'ready' ? 'success' : d.status === 'failed' ? 'error' : 'warning'}>
-                  {d.status === 'ready' ? 'آماده' : d.status === 'failed' ? 'خطا' : 'در حال پردازش'}
-                </Badge>
+                <span className={d.status === 'ready' || d.status === 'failed' ? '' : 'animate-pulse'}>
+                  <Badge kind={d.status === 'ready' ? 'success' : d.status === 'failed' ? 'error' : 'warning'}>
+                    {d.status === 'ready' ? 'آماده' : d.status === 'failed' ? 'خطا' : 'در حال پردازش'}
+                  </Badge>
+                </span>
               </li>
             ))}
           </ul>

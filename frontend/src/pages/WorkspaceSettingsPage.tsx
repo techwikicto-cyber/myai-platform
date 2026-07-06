@@ -44,6 +44,15 @@ export default function WorkspaceSettingsPage() {
     reloadDocuments()
   }, [workspaceId, reloadDocuments])
 
+  // Documents process in the background on the server; poll while any are in flight
+  // so newly-uploaded files flip to "ready" without a manual refresh.
+  const hasInFlight = documents.some((d) => d.status === 'pending' || d.status === 'processing')
+  useEffect(() => {
+    if (!hasInFlight) return
+    const timer = setInterval(reloadDocuments, 3000)
+    return () => clearInterval(timer)
+  }, [hasInFlight, reloadDocuments])
+
   async function handleSaveGeneral(e: React.FormEvent) {
     e.preventDefault()
     if (!workspaceId) return
@@ -59,15 +68,20 @@ export default function WorkspaceSettingsPage() {
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !workspaceId) return
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0 || !workspaceId) return
     setUploading(true)
     setError('')
     try {
-      await documentsApi.upload(workspaceId, file)
+      const results = await Promise.allSettled(files.map((f) => documentsApi.upload(workspaceId, f)))
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (failures.length > 0) {
+        const first = failures[0].reason
+        setError(
+          `${failures.length} فایل آپلود نشد` + (first instanceof ApiError ? ` — ${first.message}` : ''),
+        )
+      }
       await reloadDocuments()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'خطا در آپلود فایل')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -151,7 +165,7 @@ export default function WorkspaceSettingsPage() {
           <Card>
             <CardHeader
               title="مستندات ورک‌اسپیس"
-              description="فایل‌های pdf، docx، xlsx، csv، txt و md — بعد از پردازش، چت بر اساس محتوای آن‌ها پاسخ می‌دهد"
+              description="فایل‌های pdf، docx، xlsx، csv، txt و md — می‌توانید چند فایل را همزمان انتخاب کنید؛ پردازش در پس‌زمینه انجام می‌شود و هر زمان سند جدیدی اضافه کنید، چت بلافاصله از آن استفاده می‌کند"
               action={
                 <label
                   className={clsx(
@@ -161,7 +175,14 @@ export default function WorkspaceSettingsPage() {
                 >
                   {uploading ? <Spinner /> : <IconUpload />}
                   آپلود سند
-                  <input ref={fileInputRef} type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
                 </label>
               }
             />
@@ -185,7 +206,9 @@ export default function WorkspaceSettingsPage() {
                         <span className="truncate text-sm font-medium text-foreground">{d.filename}</span>
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
-                        <Badge kind={statusBadge[d.status].kind}>{statusBadge[d.status].label}</Badge>
+                        <span className={d.status === 'pending' || d.status === 'processing' ? 'animate-pulse' : ''}>
+                          <Badge kind={statusBadge[d.status].kind}>{statusBadge[d.status].label}</Badge>
+                        </span>
                         <Button variant="destructive" size="sm" onClick={() => handleDeleteDoc(d.id)} title="حذف سند">
                           <IconTrash />
                         </Button>

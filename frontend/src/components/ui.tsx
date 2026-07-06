@@ -25,8 +25,8 @@ export function Button({
   return (
     <button
       className={clsx(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors',
-        'disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150',
+        'active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
         buttonVariants[variant],
         buttonSizes[size],
@@ -69,7 +69,14 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={clsx('rounded-xl border border-border bg-card shadow-sm', className)}>{children}</div>
+    <div
+      className={clsx(
+        'animate-fade-up rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md',
+        className,
+      )}
+    >
+      {children}
+    </div>
   )
 }
 

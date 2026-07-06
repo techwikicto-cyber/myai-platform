@@ -1,11 +1,9 @@
-@import "vazirmatn/Vazirmatn-font-face.css";
 @import "tailwindcss";
 @import "highlight.js/styles/github.css";
 
-/* Design tokens — inspired by shadcn/ui: light content, dark emerald-tinted sidebar,
-   emerald primary. Referenced via Tailwind utilities like bg-background, text-primary. */
+/* Design tokens — light content, dark emerald-tinted sidebar, emerald primary. */
 @theme {
-  --font-sans: "Vazirmatn", -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --font-sans: "iranyekan", "Vazirmatn", -apple-system, "Segoe UI", Tahoma, sans-serif;
 
   --color-background: oklch(0.99 0.002 160);
   --color-foreground: oklch(0.2 0.01 165);
@@ -32,6 +30,10 @@
   --color-sidebar-border: oklch(1 0 0 / 8%);
 
   --radius-lg: 0.625rem;
+
+  --animate-fade-up: fade-up 0.35s ease-out both;
+  --animate-fade-in: fade-in 0.4s ease-out both;
+  --animate-blob: blob 14s ease-in-out infinite;
 }
 
 :root {
@@ -62,9 +64,34 @@ body {
   background-color: transparent;
 }
 
-/* Markdown rendering inside chat bubbles */
+/* ---------- Animations ---------- */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -40px) scale(1.1); }
+  66% { transform: translate(-25px, 25px) scale(0.95); }
+}
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.typing-dot {
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* ---------- Markdown rendering inside chat bubbles ---------- */
 .markdown-body {
-  line-height: 1.8;
+  line-height: 1.9;
 }
 .markdown-body p { margin: 0 0 0.6em 0; }
 .markdown-body p:last-child { margin-bottom: 0; }

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,9 +10,8 @@ from app.deps import require_workspace_manager, require_workspace_member
 from app.models.document import Document, DocumentKind
 from app.models.user import User
 from app.schemas.document import DocumentOut
-from app.services.model_config import get_embedding_config
 from app.services.parsers import SUPPORTED_EXTENSIONS, extension_of
-from app.services.rag import process_document
+from app.services.rag import process_document_background
 
 router = APIRouter(prefix="/api/workspaces/{workspace_id}/documents", tags=["documents"])
 
@@ -37,6 +36,7 @@ async def list_documents(
 async def upload_document(
     workspace_id: uuid.UUID,
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_workspace_manager),
     db: AsyncSession = Depends(get_db),
 ):
@@ -65,9 +65,8 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
 
-    embedding_config = await get_embedding_config(db)
-    await process_document(document, content, embedding_config, db)
-    await db.refresh(document)
+    # Heavy parsing/embedding happens after the response; the UI polls for status.
+    background_tasks.add_task(process_document_background, document.id, content)
     return document
 
 

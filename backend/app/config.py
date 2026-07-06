@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
     encryption_key: str = "0000000000000000000000000000000000000000="
-    default_embedding_base_url: str = "http://embedding:80"
-    default_embedding_api_type: str = "tei"
-    default_embedding_model: str = "bge-m3"
+    default_embedding_base_url: str = "http://embedding:8080/v1"
+    default_embedding_api_type: str = "openai"
+    default_embedding_model: str = "BAAI/bge-m3"
     cors_origins: list[str] = ["*"]
     upload_max_mb: int = 50
     db_query_row_limit: int = 200

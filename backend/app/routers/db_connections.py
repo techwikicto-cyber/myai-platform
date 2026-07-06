@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,9 +21,8 @@ from app.schemas.document import DocumentOut
 from app.security import encrypt_secret
 from app.services.db_connectors import factory
 from app.services.db_connectors.base import ConnectionParams
-from app.services.model_config import get_embedding_config
 from app.services.parsers import SUPPORTED_EXTENSIONS, extension_of
-from app.services.rag import process_document
+from app.services.rag import process_document_background
 
 router = APIRouter(prefix="/api/workspaces/{workspace_id}/db-connections", tags=["db-connections"])
 settings = get_settings()
@@ -169,6 +168,7 @@ async def upload_schema_doc(
     workspace_id: uuid.UUID,
     connection_id: uuid.UUID,
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_workspace_manager),
     db: AsyncSession = Depends(get_db),
 ):
@@ -201,7 +201,5 @@ async def upload_schema_doc(
     await db.commit()
     await db.refresh(document)
 
-    embedding_config = await get_embedding_config(db)
-    await process_document(document, content, embedding_config, db)
-    await db.refresh(document)
+    background_tasks.add_task(process_document_background, document.id, content)
     return document
