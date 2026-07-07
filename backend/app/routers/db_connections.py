@@ -12,6 +12,7 @@ from app.models.db_connection import DbConnection
 from app.models.document import Document, DocumentKind
 from app.models.user import User
 from app.schemas.db_connection import (
+    AllowedTablesUpdate,
     ConnectionTestResult,
     DbConnectionCreate,
     DbConnectionOut,
@@ -144,6 +145,7 @@ async def delete_connection(
     conn = await db.get(DbConnection, connection_id)
     if not conn or conn.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+    factory.invalidate_engine(conn)
     await db.delete(conn)
     await db.commit()
 
@@ -161,6 +163,23 @@ async def list_schema_docs(
         .order_by(Document.created_at.desc())
     )
     return result.scalars().all()
+
+
+@router.patch("/{connection_id}/allowlist", response_model=DbConnectionOut)
+async def set_allowlist(
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    payload: AllowedTablesUpdate,
+    user: User = Depends(require_workspace_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await db.get(DbConnection, connection_id)
+    if not conn or conn.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+    conn.allowed_tables = payload.allowed_tables or None
+    await db.commit()
+    await db.refresh(conn)
+    return conn
 
 
 @router.post("/{connection_id}/schema-docs", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)

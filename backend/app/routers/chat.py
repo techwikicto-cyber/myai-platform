@@ -91,6 +91,7 @@ def _sse(data: dict) -> str:
 async def send_message(
     payload: MessageCreate,
     thread: Thread = Depends(get_owned_thread),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     workspace = await db.get(Workspace, thread.workspace_id)
@@ -121,14 +122,17 @@ async def send_message(
     extra_context = None
     if query_vector is not None:
         try:
-            chunks = await search_similar_chunks(thread.workspace_id, query_vector, db)
+            chunks = await search_similar_chunks(
+                thread.workspace_id, query_vector, db, query_text=payload.content
+            )
             if chunks:
-                extra_context = "\n\n---\n\n".join(c.content for c in chunks)
+                parts = [f"[منبع: {c.filename}]\n{c.content}" for c in chunks]
+                extra_context = "\n\n---\n\n".join(parts)
         except Exception:  # noqa: BLE001
             extra_context = None
 
     db_tools, db_context, db_connections_by_name = await build_db_tools_and_context(
-        thread.workspace_id, query_vector, db
+        thread.workspace_id, query_vector, db, query_text=payload.content
     )
     if db_context:
         extra_context = f"{extra_context}\n\n{db_context}" if extra_context else db_context
@@ -156,7 +160,10 @@ async def send_message(
                         }
                     )
                     for tc in tool_calls:
-                        tool_result = await run_tool_call(db_connections_by_name, tc["arguments"])
+                        tool_result = await run_tool_call(
+                            db_connections_by_name, tc["arguments"],
+                            user_id=user.id, thread_id=thread.id, user_question=payload.content,
+                        )
                         messages.append({"role": "tool", "tool_call_id": tc["id"], "content": tool_result})
 
                     async for event in stream_chat(llm_config, messages):

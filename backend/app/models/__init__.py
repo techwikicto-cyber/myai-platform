@@ -4,6 +4,7 @@ from app.models.document import Document, DocumentChunk, DocumentKind, DocumentS
 from app.models.db_connection import DbConnection, DbEngine
 from app.models.thread import Thread, Message, MessageRole
 from app.models.settings import ModelSettings
+from app.models.query_audit_log import QueryAuditLog, QueryAuditStatus
 
 __all__ = [
     "User",
@@ -20,4 +21,6 @@ __all__ = [
     "Message",
     "MessageRole",
     "ModelSettings",
+    "QueryAuditLog",
+    "QueryAuditStatus",
 ]

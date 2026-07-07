@@ -1,3 +1,5 @@
+import sqlglot
+import sqlglot.expressions as exp
 import sqlparse
 from sqlparse.tokens import DML, Keyword
 
@@ -51,6 +53,32 @@ def ensure_readonly_sql(sql: str, default_row_limit: int) -> str:
         cleaned = f"{cleaned} LIMIT {default_row_limit}"
 
     return cleaned
+
+
+def ensure_allowed_tables(sql: str, allowed_tables: dict) -> None:
+    """Raises QuerySafetyError if the SQL references tables not in the allowlist.
+    Uses sqlglot for reliable AST-based table extraction (handles CTEs, subqueries, aliases)."""
+    if not allowed_tables:
+        return  # allowlist not configured → allow everything (backward compat)
+    try:
+        parsed = sqlglot.parse_one(sql)
+        referenced = {t.name.lower() for t in parsed.find_all(exp.Table)}
+    except Exception:  # noqa: BLE001
+        return  # if sqlglot can't parse, defer to ensure_readonly_sql already done
+
+    allowed_lower = {k.lower() for k in allowed_tables}
+    not_allowed = referenced - allowed_lower
+    if not_allowed:
+        raise QuerySafetyError(f"دسترسی به جدول(های) {', '.join(sorted(not_allowed))} مجاز نیست")
+
+
+def ensure_allowed_mongo_collection(payload: dict, allowed_tables: dict) -> None:
+    """Raises QuerySafetyError if the MongoDB operation targets a collection not in the allowlist."""
+    if not allowed_tables:
+        return
+    collection = payload.get("collection", "")
+    if collection.lower() not in {k.lower() for k in allowed_tables}:
+        raise QuerySafetyError(f"دسترسی به کالکشن «{collection}» مجاز نیست")
 
 
 ALLOWED_MONGO_OPERATIONS = {"find", "aggregate"}

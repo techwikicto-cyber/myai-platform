@@ -24,6 +24,7 @@ export interface DbConnectionDto {
   username: string | null
   options: Record<string, unknown>
   schema_summary: Record<string, unknown> | null
+  allowed_tables: Record<string, string[] | null> | null
   last_introspected_at: string | null
   created_at: string
 }
@@ -51,6 +52,10 @@ export const dbConnectionsApi = {
     formData.append('file', file)
     return api.upload<DocumentDto>(`/workspaces/${workspaceId}/db-connections/${id}/schema-docs`, formData)
   },
+  setAllowlist: (workspaceId: string, id: string, allowedTables: Record<string, string[] | null> | null) =>
+    api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/allowlist`, {
+      allowed_tables: allowedTables,
+    }),
 }
 
 export const DEFAULT_PORTS: Record<DbEngine, number> = {

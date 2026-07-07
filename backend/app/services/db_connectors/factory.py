@@ -1,6 +1,6 @@
 from app.models.db_connection import DbConnection, DbEngine
 from app.security import decrypt_secret
-from app.services.db_connectors import mongo, sql
+from app.services.db_connectors import engine_cache, mongo, sql
 from app.services.db_connectors.base import ConnectionParams, QueryResult
 
 
@@ -44,4 +44,9 @@ async def execute_query(
 
     if not isinstance(query, str):
         raise ValueError("برای دیتابیس‌های SQL باید یک عبارت SQL متنی ارسال شود")
-    return await sql.execute_query(db_connection.engine, params, query, row_limit, timeout)
+    return await sql.execute_query(str(db_connection.id), db_connection.engine, params, query, row_limit, timeout)
+
+
+def invalidate_engine(db_connection: DbConnection) -> None:
+    """Remove cached engine so next query rebuilds the connection pool."""
+    engine_cache.invalidate(str(db_connection.id))

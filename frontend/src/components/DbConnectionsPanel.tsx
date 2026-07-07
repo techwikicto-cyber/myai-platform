@@ -130,6 +130,89 @@ function ConnectionForm({ workspaceId, onCreated }: { workspaceId: string; onCre
   )
 }
 
+function AllowlistPanel({
+  workspaceId,
+  connection,
+  onChanged,
+}: {
+  workspaceId: string
+  connection: DbConnectionDto
+  onChanged: () => void
+}) {
+  const summary = connection.schema_summary as { tables?: { name: string }[]; collections?: { name: string }[] } | null
+  const items: string[] = summary?.tables?.map((t) => t.name) ?? summary?.collections?.map((c) => c.name) ?? []
+
+  const [enabled, setEnabled] = useState<Set<string>>(() => {
+    if (connection.allowed_tables === null) return new Set(items)
+    return new Set(Object.keys(connection.allowed_tables))
+  })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  if (items.length === 0) return null
+
+  const allChecked = enabled.size === items.length
+  const toggle = (name: string) => {
+    setEnabled((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+    setSaved(false)
+  }
+  const toggleAll = () => {
+    setEnabled(allChecked ? new Set() : new Set(items))
+    setSaved(false)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const payload = allChecked
+        ? null
+        : Object.fromEntries([...enabled].map((t) => [t, null]))
+      await dbConnectionsApi.setAllowlist(workspaceId, connection.id, payload)
+      setSaved(true)
+      onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-border bg-muted/40 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm font-medium text-foreground">محدودسازی دسترسی جداول</p>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving && <Spinner />}
+          {saved ? '✓ ذخیره شد' : 'ذخیره'}
+        </Button>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        فقط جداول انتخاب‌شده در کوئری‌های هوش مصنوعی در دسترس خواهند بود.
+      </p>
+      <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
+        <input type="checkbox" checked={allChecked} onChange={toggleAll} className="accent-primary" />
+        همه جداول
+      </label>
+      <div className="max-h-48 overflow-y-auto">
+        {items.map((name) => (
+          <label key={name} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-foreground" dir="ltr">
+            <input
+              type="checkbox"
+              checked={enabled.has(name)}
+              onChange={() => toggle(name)}
+              className="accent-primary"
+            />
+            {name}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ConnectionCard({
   workspaceId,
   connection,
@@ -286,6 +369,8 @@ function ConnectionCard({
           </ul>
         )}
       </div>
+
+      <AllowlistPanel workspaceId={workspaceId} connection={connection} onChanged={onChanged} />
     </Card>
   )
 }

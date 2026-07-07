@@ -31,10 +31,16 @@ class DbConnectionOut(BaseModel):
     username: str | None
     options: dict
     schema_summary: dict | None
+    allowed_tables: dict | None
     last_introspected_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AllowedTablesUpdate(BaseModel):
+    # {"orders": ["id","total"], "invoices": null}  — null means all columns of that table
+    allowed_tables: dict[str, list[str] | None]
 
 
 class ConnectionTestResult(BaseModel):

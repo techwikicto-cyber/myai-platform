@@ -12,6 +12,7 @@ async def build_db_tools_and_context(
     workspace_id: uuid.UUID,
     query_embedding: list[float] | None,
     db: AsyncSession,
+    query_text: str = "",
 ) -> tuple[list[dict], str | None, dict[str, DbConnection]]:
     result = await db.execute(select(DbConnection).where(DbConnection.workspace_id == workspace_id))
     connections = list(result.scalars().all())
@@ -30,7 +31,9 @@ async def build_db_tools_and_context(
 
         doc_text = ""
         if query_embedding is not None:
-            chunks = await search_similar_chunks(workspace_id, query_embedding, db, top_k=3, db_connection_id=conn.id)
+            chunks = await search_similar_chunks(
+                workspace_id, query_embedding, db, query_text=query_text, top_k=3, db_connection_id=conn.id
+            )
             doc_text = "\n".join(c.content for c in chunks)
 
         context_parts.append(

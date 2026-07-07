@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
 from app.models.db_connection import DbEngine
+from app.services.db_connectors import engine_cache
 from app.services.db_connectors.base import ConnectionParams, QueryResult
 from app.services.query_safety import ensure_readonly_sql
 
@@ -29,7 +30,6 @@ def _build_url(engine: DbEngine, params: ConnectionParams) -> str:
         auth = params.username
         if params.password:
             from urllib.parse import quote_plus
-
             auth += f":{quote_plus(params.password)}"
         auth += "@"
 
@@ -42,11 +42,20 @@ def _build_url(engine: DbEngine, params: ConnectionParams) -> str:
 def _build_engine(engine: DbEngine, params: ConnectionParams, timeout: int) -> Engine:
     url = _build_url(engine, params)
     connect_args = _CONNECT_ARGS_BY_ENGINE[engine](timeout)
-    return create_engine(url, connect_args=connect_args, pool_pre_ping=True, pool_recycle=300)
+    return create_engine(
+        url,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=2,
+        pool_timeout=10,
+    )
 
 
 def _test_connection_sync(engine: DbEngine, params: ConnectionParams, timeout: int) -> tuple[bool, str]:
     try:
+        # Test connections use a temporary engine (no cache) to avoid polluting the pool
         eng = _build_engine(engine, params, timeout)
         with eng.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -61,6 +70,7 @@ async def test_connection(engine: DbEngine, params: ConnectionParams, timeout: i
 
 
 def _introspect_sync(engine: DbEngine, params: ConnectionParams, timeout: int) -> dict:
+    # Introspection also uses a temporary engine
     eng = _build_engine(engine, params, timeout)
     try:
         inspector = inspect(eng)
@@ -80,24 +90,26 @@ async def introspect_schema(engine: DbEngine, params: ConnectionParams, timeout:
 
 
 def _execute_query_sync(
-    engine: DbEngine, params: ConnectionParams, sql: str, row_limit: int, timeout: int
+    conn_id: str, engine: DbEngine, params: ConnectionParams, sql: str, row_limit: int, timeout: int
 ) -> QueryResult:
     safe_sql = ensure_readonly_sql(sql, row_limit)
-    eng = _build_engine(engine, params, timeout)
-    try:
-        with eng.connect() as conn:
-            result = conn.execute(text(safe_sql))
-            columns = list(result.keys())
-            rows = [dict(zip(columns, row)) for row in result.fetchmany(row_limit)]
-            return QueryResult(columns=columns, rows=rows, truncated=len(rows) == row_limit)
-    finally:
-        eng.dispose()
+    eng = engine_cache.get_or_create(conn_id, lambda: _build_engine(engine, params, timeout))
+    with eng.connect() as conn:
+        result = conn.execute(text(safe_sql))
+        columns = list(result.keys())
+        rows = [dict(zip(columns, row)) for row in result.fetchmany(row_limit)]
+        return QueryResult(columns=columns, rows=rows, truncated=len(rows) == row_limit)
 
 
 async def execute_query(
-    engine: DbEngine, params: ConnectionParams, sql: str, row_limit: int = 200, timeout: int = 15
+    conn_id: str,
+    engine: DbEngine,
+    params: ConnectionParams,
+    sql: str,
+    row_limit: int = 200,
+    timeout: int = 15,
 ) -> QueryResult:
     return await asyncio.wait_for(
-        asyncio.to_thread(_execute_query_sync, engine, params, sql, row_limit, timeout),
+        asyncio.to_thread(_execute_query_sync, conn_id, engine, params, sql, row_limit, timeout),
         timeout=timeout + 5,
     )
