@@ -25,6 +25,7 @@ export interface DbConnectionDto {
   options: Record<string, unknown>
   schema_summary: Record<string, unknown> | null
   allowed_tables: Record<string, string[] | null> | null
+  is_shared: boolean
   last_introspected_at: string | null
   created_at: string
 }
