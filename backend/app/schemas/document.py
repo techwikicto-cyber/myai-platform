@@ -7,7 +7,7 @@ from app.models.document import DocumentStatus
 
 
 class DocumentShareUpdate(BaseModel):
-    is_shared: bool
+    workspace_ids: list[uuid.UUID]
 
 
 class DocumentOut(BaseModel):
@@ -16,7 +16,7 @@ class DocumentOut(BaseModel):
     source_type: str
     status: DocumentStatus
     error_message: str | None
-    is_shared: bool
+    shared_workspace_ids: list[uuid.UUID] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}

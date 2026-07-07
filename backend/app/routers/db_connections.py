@@ -1,8 +1,9 @@
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -10,6 +11,7 @@ from app.database import get_db
 from app.deps import require_admin, require_workspace_manager, require_workspace_member
 from app.models.db_connection import DbConnection
 from app.models.document import Document, DocumentKind
+from app.models.sharing import DbConnectionWorkspaceShare
 from app.models.user import User
 from app.schemas.db_connection import (
     AllowedTablesUpdate,
@@ -22,7 +24,6 @@ from app.schemas.db_connection import (
 from app.schemas.document import DocumentOut
 from app.security import encrypt_secret
 from app.services.db_connectors import factory
-from app.services.db_connectors.base import ConnectionParams
 from app.services.parsers import SUPPORTED_EXTENSIONS, extension_of
 from app.services.rag import process_document_background
 
@@ -45,6 +46,37 @@ def _temp_connection(payload: DbConnectionCreate) -> DbConnection:
     return conn
 
 
+async def _load_conn_shares(db: AsyncSession, conn_ids: list[uuid.UUID]) -> dict[str, list[uuid.UUID]]:
+    if not conn_ids:
+        return {}
+    result = await db.execute(
+        select(DbConnectionWorkspaceShare.db_connection_id, DbConnectionWorkspaceShare.workspace_id)
+        .where(DbConnectionWorkspaceShare.db_connection_id.in_(conn_ids))
+    )
+    shares: dict[str, list[uuid.UUID]] = defaultdict(list)
+    for conn_id, ws_id in result:
+        shares[str(conn_id)].append(ws_id)
+    return shares
+
+
+def _conn_out(conn: DbConnection, shared_ids: list[uuid.UUID]) -> DbConnectionOut:
+    return DbConnectionOut(
+        id=conn.id,
+        name=conn.name,
+        engine=conn.engine,
+        host=conn.host,
+        port=conn.port,
+        database=conn.database,
+        username=conn.username,
+        options=conn.options,
+        schema_summary=conn.schema_summary,
+        allowed_tables=conn.allowed_tables,
+        shared_workspace_ids=shared_ids,
+        last_introspected_at=conn.last_introspected_at,
+        created_at=conn.created_at,
+    )
+
+
 @router.post("/test", response_model=ConnectionTestResult)
 async def test_new_connection(
     workspace_id: uuid.UUID,
@@ -63,7 +95,9 @@ async def list_connections(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(DbConnection).where(DbConnection.workspace_id == workspace_id))
-    return result.scalars().all()
+    conns = list(result.scalars().all())
+    shares = await _load_conn_shares(db, [c.id for c in conns])
+    return [_conn_out(c, shares.get(str(c.id), [])) for c in conns]
 
 
 @router.post("", response_model=DbConnectionOut, status_code=status.HTTP_201_CREATED)
@@ -96,9 +130,9 @@ async def create_connection(
         await db.commit()
         await db.refresh(conn)
     except Exception:  # noqa: BLE001
-        pass  # connection is still saved; user can retry via "refresh schema"
+        pass
 
-    return conn
+    return _conn_out(conn, [])
 
 
 @router.post("/{connection_id}/test", response_model=ConnectionTestResult)
@@ -133,7 +167,9 @@ async def refresh_schema(
     conn.last_introspected_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(conn)
-    return conn
+
+    shares = await _load_conn_shares(db, [conn.id])
+    return _conn_out(conn, shares.get(str(conn.id), []))
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -163,7 +199,16 @@ async def list_schema_docs(
         .where(Document.db_connection_id == connection_id, Document.kind == DocumentKind.db_schema_doc)
         .order_by(Document.created_at.desc())
     )
-    return result.scalars().all()
+    docs = list(result.scalars().all())
+    # Schema docs are never shared, so shared_workspace_ids is always empty
+    return [
+        DocumentOut(
+            id=d.id, filename=d.filename, source_type=d.source_type,
+            status=d.status, error_message=d.error_message,
+            shared_workspace_ids=[], created_at=d.created_at,
+        )
+        for d in docs
+    ]
 
 
 @router.patch("/{connection_id}/share", response_model=DbConnectionOut)
@@ -177,10 +222,18 @@ async def share_connection(
     conn = await db.get(DbConnection, connection_id)
     if not conn or conn.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
-    conn.is_shared = payload.is_shared
+
+    await db.execute(sa_delete(DbConnectionWorkspaceShare).where(DbConnectionWorkspaceShare.db_connection_id == connection_id))
+    for ws_id in payload.workspace_ids:
+        if ws_id != workspace_id:
+            db.add(DbConnectionWorkspaceShare(db_connection_id=connection_id, workspace_id=ws_id))
     await db.commit()
-    await db.refresh(conn)
-    return conn
+
+    result = await db.execute(
+        select(DbConnectionWorkspaceShare.workspace_id)
+        .where(DbConnectionWorkspaceShare.db_connection_id == connection_id)
+    )
+    return _conn_out(conn, list(result.scalars()))
 
 
 @router.patch("/{connection_id}/allowlist", response_model=DbConnectionOut)
@@ -197,7 +250,9 @@ async def set_allowlist(
     conn.allowed_tables = payload.allowed_tables or None
     await db.commit()
     await db.refresh(conn)
-    return conn
+
+    shares = await _load_conn_shares(db, [conn.id])
+    return _conn_out(conn, shares.get(str(conn.id), []))
 
 
 @router.post("/{connection_id}/schema-docs", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
@@ -239,4 +294,8 @@ async def upload_schema_doc(
     await db.refresh(document)
 
     background_tasks.add_task(process_document_background, document.id, content)
-    return document
+    return DocumentOut(
+        id=document.id, filename=document.filename, source_type=document.source_type,
+        status=document.status, error_message=document.error_message,
+        shared_workspace_ids=[], created_at=document.created_at,
+    )

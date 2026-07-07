@@ -13,6 +13,7 @@ import { ApiError } from '../api/client'
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select, Spinner } from './ui'
 import { IconDatabase, IconDocument, IconGlobe, IconPlus, IconTrash, IconUpload } from './icons'
 import { useAuthStore } from '../store/auth'
+import ShareModal from './ShareModal'
 
 const ENGINES: DbEngine[] = ['postgres', 'mysql', 'mssql', 'oracle', 'mongodb']
 
@@ -225,6 +226,7 @@ function ConnectionCard({
 }) {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
+  const [sharingOpen, setSharingOpen] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [schemaDocs, setSchemaDocs] = useState<DocumentDto[]>([])
@@ -275,11 +277,6 @@ function ConnectionCard({
     onChanged()
   }
 
-  async function handleToggleShare() {
-    await dbConnectionsApi.setShared(workspaceId, connection.id, !connection.is_shared)
-    onChanged()
-  }
-
   async function handleUploadSchemaDoc(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -319,17 +316,33 @@ function ConnectionCard({
         <div className="flex items-center gap-2">
           {isAdmin && (
             <button
-              onClick={handleToggleShare}
-              title={connection.is_shared ? 'لغو اشتراک‌گذاری با سایر فضاهای کاری' : 'اشتراک‌گذاری با همه فضاهای کاری'}
+              onClick={() => setSharingOpen(true)}
+              title={
+                connection.shared_workspace_ids.length > 0
+                  ? `اشتراک با ${connection.shared_workspace_ids.length} فضای کاری`
+                  : 'اشتراک‌گذاری با فضاهای کاری دیگر'
+              }
               className={clsx(
                 'rounded-md p-1.5 transition-colors',
-                connection.is_shared
+                connection.shared_workspace_ids.length > 0
                   ? 'text-primary hover:text-primary/80'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <IconGlobe />
             </button>
+          )}
+          {sharingOpen && (
+            <ShareModal
+              currentWorkspaceId={workspaceId}
+              currentSharedIds={connection.shared_workspace_ids}
+              resourceName={connection.name}
+              onSave={async (ids) => {
+                await dbConnectionsApi.setShared(workspaceId, connection.id, ids)
+                onChanged()
+              }}
+              onClose={() => setSharingOpen(false)}
+            />
           )}
           <Button variant="destructive" size="sm" onClick={handleDelete} title="حذف اتصال">
             <IconTrash />

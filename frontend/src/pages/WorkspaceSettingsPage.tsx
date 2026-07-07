@@ -5,6 +5,7 @@ import { workspacesApi } from '../api/workspaces'
 import { usersApi } from '../api/users'
 import { documentsApi, type DocumentDto } from '../api/documents'
 import DbConnectionsPanel from '../components/DbConnectionsPanel'
+import ShareModal from '../components/ShareModal'
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Spinner, Textarea } from '../components/ui'
 import { IconDatabase, IconDocument, IconGlobe, IconSettings, IconTrash, IconUpload, IconUserPlus, IconUsers } from '../components/icons'
 import { ApiError } from '../api/client'
@@ -68,6 +69,8 @@ export default function WorkspaceSettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Members tab state
+  const [sharingDoc, setSharingDoc] = useState<DocumentDto | null>(null)
+
   const [members, setMembers] = useState<WorkspaceMember[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [userSearch, setUserSearch] = useState('')
@@ -151,9 +154,9 @@ export default function WorkspaceSettingsPage() {
     await reloadDocuments()
   }
 
-  async function handleToggleShareDoc(doc: DocumentDto) {
+  async function handleShareDoc(doc: DocumentDto, workspaceIds: string[]) {
     if (!workspaceId) return
-    await documentsApi.setShared(workspaceId, doc.id, !doc.is_shared)
+    await documentsApi.setShared(workspaceId, doc.id, workspaceIds)
     await reloadDocuments()
   }
 
@@ -330,11 +333,15 @@ export default function WorkspaceSettingsPage() {
                         </span>
                         {isAdmin && (
                           <button
-                            onClick={() => handleToggleShareDoc(d)}
-                            title={d.is_shared ? 'لغو اشتراک‌گذاری' : 'اشتراک‌گذاری با همه فضاهای کاری'}
+                            onClick={() => setSharingDoc(d)}
+                            title={
+                              d.shared_workspace_ids.length > 0
+                                ? `اشتراک با ${d.shared_workspace_ids.length} فضای کاری`
+                                : 'اشتراک‌گذاری با فضاهای کاری دیگر'
+                            }
                             className={clsx(
                               'rounded-md p-1 transition-colors',
-                              d.is_shared
+                              d.shared_workspace_ids.length > 0
                                 ? 'text-primary hover:text-primary/80'
                                 : 'text-muted-foreground hover:text-foreground',
                             )}
@@ -367,6 +374,16 @@ export default function WorkspaceSettingsPage() {
       )}
 
       {tab === 'database' && workspaceId && <DbConnectionsPanel workspaceId={workspaceId} />}
+
+      {sharingDoc && workspaceId && (
+        <ShareModal
+          currentWorkspaceId={workspaceId}
+          currentSharedIds={sharingDoc.shared_workspace_ids}
+          resourceName={sharingDoc.filename}
+          onSave={(ids) => handleShareDoc(sharingDoc, ids)}
+          onClose={() => setSharingDoc(null)}
+        />
+      )}
 
       {tab === 'members' && isManager && (
         <div className="mx-auto w-full max-w-2xl space-y-6 p-6">

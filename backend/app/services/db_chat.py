@@ -4,6 +4,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_connection import DbConnection, DbEngine
+from app.models.sharing import DbConnectionWorkspaceShare
 from app.services.db_query_tool import build_tool_schema, summarize_schema
 from app.services.rag import search_similar_chunks
 
@@ -14,9 +15,17 @@ async def build_db_tools_and_context(
     db: AsyncSession,
     query_text: str = "",
 ) -> tuple[list[dict], str | None, dict[str, DbConnection]]:
+    share_subq = (
+        select(DbConnectionWorkspaceShare.id)
+        .where(
+            DbConnectionWorkspaceShare.db_connection_id == DbConnection.id,
+            DbConnectionWorkspaceShare.workspace_id == workspace_id,
+        )
+        .exists()
+    )
     result = await db.execute(
         select(DbConnection).where(
-            or_(DbConnection.workspace_id == workspace_id, DbConnection.is_shared == True)  # noqa: E712
+            or_(DbConnection.workspace_id == workspace_id, share_subq)
         )
     )
     connections = list(result.scalars().all())

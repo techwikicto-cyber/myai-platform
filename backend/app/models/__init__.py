@@ -5,6 +5,7 @@ from app.models.db_connection import DbConnection, DbEngine
 from app.models.thread import Thread, Message, MessageRole
 from app.models.settings import ModelSettings
 from app.models.query_audit_log import QueryAuditLog, QueryAuditStatus
+from app.models.sharing import DocumentWorkspaceShare, DbConnectionWorkspaceShare
 
 __all__ = [
     "User",
@@ -23,4 +24,6 @@ __all__ = [
     "ModelSettings",
     "QueryAuditLog",
     "QueryAuditStatus",
+    "DocumentWorkspaceShare",
+    "DbConnectionWorkspaceShare",
 ]

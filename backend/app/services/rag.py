@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models.document import Document, DocumentChunk, DocumentKind, DocumentStatus
+from app.models.sharing import DocumentWorkspaceShare
 from app.services.chunking import chunk_text, estimate_tokens
 from app.services.embeddings import embed_texts
 from app.services.model_config import EmbeddingConfig, get_embedding_config
@@ -98,17 +99,29 @@ async def search_similar_chunks(
         kw_scope = f"dc.workspace_id = '{workspace_id}' AND d.db_connection_id = :conn_id"
         kw_params_extra: dict = {"conn_id": str(db_connection_id)}
     else:
-        # Regular doc search: own workspace docs + shared docs from all workspaces
+        # Regular doc search: own workspace docs + docs explicitly shared with this workspace
+        share_subq = (
+            select(DocumentWorkspaceShare.id)
+            .where(
+                DocumentWorkspaceShare.document_id == Document.id,
+                DocumentWorkspaceShare.workspace_id == workspace_id,
+            )
+            .exists()
+        )
         scope_filter = and_(
             Document.db_connection_id.is_(None),
             or_(
                 DocumentChunk.workspace_id == workspace_id,
-                and_(Document.is_shared == True, Document.kind == DocumentKind.workspace_doc),  # noqa: E712
+                and_(Document.kind == DocumentKind.workspace_doc, share_subq),
             ),
         )
         kw_scope = (
-            "d.db_connection_id IS NULL AND "
-            "(dc.workspace_id = :workspace_id OR (d.is_shared = TRUE AND d.kind = 'workspace_doc'))"
+            "d.db_connection_id IS NULL AND ("
+            "dc.workspace_id = :workspace_id OR "
+            "(d.kind = 'workspace_doc' AND EXISTS ("
+            "  SELECT 1 FROM document_workspace_shares dws"
+            "  WHERE dws.document_id = d.id AND dws.workspace_id = :workspace_id"
+            ")))"
         )
         kw_params_extra = {}
 

@@ -25,7 +25,7 @@ export interface DbConnectionDto {
   options: Record<string, unknown>
   schema_summary: Record<string, unknown> | null
   allowed_tables: Record<string, string[] | null> | null
-  is_shared: boolean
+  shared_workspace_ids: string[]
   last_introspected_at: string | null
   created_at: string
 }
@@ -57,8 +57,8 @@ export const dbConnectionsApi = {
     api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/allowlist`, {
       allowed_tables: allowedTables,
     }),
-  setShared: (workspaceId: string, id: string, is_shared: boolean) =>
-    api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/share`, { is_shared }),
+  setShared: (workspaceId: string, id: string, workspaceIds: string[]) =>
+    api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/share`, { workspace_ids: workspaceIds }),
 }
 
 export const DEFAULT_PORTS: Record<DbEngine, number> = {

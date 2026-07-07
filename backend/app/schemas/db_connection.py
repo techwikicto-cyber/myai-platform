@@ -32,7 +32,7 @@ class DbConnectionOut(BaseModel):
     options: dict
     schema_summary: dict | None
     allowed_tables: dict | None
-    is_shared: bool
+    shared_workspace_ids: list[uuid.UUID] = []
     last_introspected_at: datetime | None
     created_at: datetime
 
@@ -40,7 +40,7 @@ class DbConnectionOut(BaseModel):
 
 
 class ShareUpdate(BaseModel):
-    is_shared: bool
+    workspace_ids: list[uuid.UUID]
 
 
 class AllowedTablesUpdate(BaseModel):
