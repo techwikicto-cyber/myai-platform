@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_connection import DbConnection, DbEngine
@@ -14,7 +14,11 @@ async def build_db_tools_and_context(
     db: AsyncSession,
     query_text: str = "",
 ) -> tuple[list[dict], str | None, dict[str, DbConnection]]:
-    result = await db.execute(select(DbConnection).where(DbConnection.workspace_id == workspace_id))
+    result = await db.execute(
+        select(DbConnection).where(
+            or_(DbConnection.workspace_id == workspace_id, DbConnection.is_shared == True)  # noqa: E712
+        )
+    )
     connections = list(result.scalars().all())
     if not connections:
         return [], None, {}

@@ -6,10 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_db
-from app.deps import require_workspace_manager, require_workspace_member
+from app.deps import require_admin, require_workspace_manager, require_workspace_member
 from app.models.document import Document, DocumentKind
 from app.models.user import User
-from app.schemas.document import DocumentOut
+from app.schemas.document import DocumentOut, DocumentShareUpdate
 from app.services.parsers import SUPPORTED_EXTENSIONS, extension_of
 from app.services.rag import process_document_background
 
@@ -67,6 +67,23 @@ async def upload_document(
 
     # Heavy parsing/embedding happens after the response; the UI polls for status.
     background_tasks.add_task(process_document_background, document.id, content)
+    return document
+
+
+@router.patch("/{document_id}/share", response_model=DocumentOut)
+async def share_document(
+    workspace_id: uuid.UUID,
+    document_id: uuid.UUID,
+    payload: DocumentShareUpdate,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await db.get(Document, document_id)
+    if not document or document.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="سند پیدا نشد")
+    document.is_shared = payload.is_shared
+    await db.commit()
+    await db.refresh(document)
     return document
 
 

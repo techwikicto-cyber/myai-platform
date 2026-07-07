@@ -56,6 +56,8 @@ export const dbConnectionsApi = {
     api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/allowlist`, {
       allowed_tables: allowedTables,
     }),
+  setShared: (workspaceId: string, id: string, is_shared: boolean) =>
+    api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/share`, { is_shared }),
 }
 
 export const DEFAULT_PORTS: Record<DbEngine, number> = {

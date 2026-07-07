@@ -8,6 +8,7 @@ export interface DocumentDto {
   source_type: string
   status: DocumentStatus
   error_message: string | null
+  is_shared: boolean
   created_at: string
 }
 
@@ -20,4 +21,6 @@ export const documentsApi = {
   },
   remove: (workspaceId: string, documentId: string) =>
     api.delete<void>(`/workspaces/${workspaceId}/documents/${documentId}`),
+  setShared: (workspaceId: string, documentId: string, is_shared: boolean) =>
+    api.patch<DocumentDto>(`/workspaces/${workspaceId}/documents/${documentId}/share`, { is_shared }),
 }

@@ -50,10 +50,26 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @admin_router.patch("/{user_id}", response_model=UserOut)
-async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db)):
+async def update_user(
+    user_id: uuid.UUID,
+    payload: UserUpdate,
+    current_admin: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="کاربر پیدا نشد")
+    if user.id == current_admin.id:
+        if payload.is_active is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="نمی‌توانید حساب کاربری خودتان را غیرفعال کنید",
+            )
+        if payload.role is not None and payload.role != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="نمی‌توانید نقش ادمین خود را تغییر دهید",
+            )
     if payload.role is not None:
         user.role = payload.role
     if payload.is_active is not None:

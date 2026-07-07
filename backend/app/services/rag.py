@@ -1,11 +1,11 @@
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
-from app.models.document import Document, DocumentChunk, DocumentStatus
+from app.models.document import Document, DocumentChunk, DocumentKind, DocumentStatus
 from app.services.chunking import chunk_text, estimate_tokens
 from app.services.embeddings import embed_texts
 from app.services.model_config import EmbeddingConfig, get_embedding_config
@@ -84,12 +84,33 @@ async def search_similar_chunks(
     top_k: int = 5,
     db_connection_id: uuid.UUID | None = None,
 ) -> list[ChunkResult]:
-    """Hybrid search: combines vector similarity (semantic) with BM25 keyword matching via RRF."""
-    filter_extra = (
-        Document.db_connection_id == db_connection_id
-        if db_connection_id is not None
-        else Document.db_connection_id.is_(None)
-    )
+    """Hybrid search: combines vector similarity (semantic) with BM25 keyword matching via RRF.
+
+    For regular workspace-doc searches (db_connection_id=None), shared documents from any
+    workspace are automatically included in addition to the workspace's own documents.
+    """
+    if db_connection_id is not None:
+        # Schema doc search: specific to this connection in this workspace only
+        scope_filter = and_(
+            DocumentChunk.workspace_id == workspace_id,
+            Document.db_connection_id == db_connection_id,
+        )
+        kw_scope = f"dc.workspace_id = '{workspace_id}' AND d.db_connection_id = :conn_id"
+        kw_params_extra: dict = {"conn_id": str(db_connection_id)}
+    else:
+        # Regular doc search: own workspace docs + shared docs from all workspaces
+        scope_filter = and_(
+            Document.db_connection_id.is_(None),
+            or_(
+                DocumentChunk.workspace_id == workspace_id,
+                and_(Document.is_shared == True, Document.kind == DocumentKind.workspace_doc),  # noqa: E712
+            ),
+        )
+        kw_scope = (
+            "d.db_connection_id IS NULL AND "
+            "(dc.workspace_id = :workspace_id OR (d.is_shared = TRUE AND d.kind = 'workspace_doc'))"
+        )
+        kw_params_extra = {}
 
     # --- Vector search ---
     vec_stmt = (
@@ -100,9 +121,8 @@ async def search_similar_chunks(
         )
         .join(Document, Document.id == DocumentChunk.document_id)
         .where(
-            DocumentChunk.workspace_id == workspace_id,
             Document.status == DocumentStatus.ready,
-            filter_extra,
+            scope_filter,
             (1 - DocumentChunk.embedding.cosine_distance(query_embedding)) >= MIN_SIMILARITY,
         )
         .order_by(DocumentChunk.embedding.cosine_distance(query_embedding))
@@ -124,18 +144,12 @@ async def search_similar_chunks(
     # --- Keyword (BM25 tsvector) search ---
     if query_text.strip():
         try:
-            conn_filter = (
-                "AND d.db_connection_id = :conn_id"
-                if db_connection_id is not None
-                else "AND d.db_connection_id IS NULL"
-            )
             kw_sql = text(f"""
                 SELECT dc.id::text, dc.content, dc.chunk_index, d.filename
                 FROM document_chunks dc
                 JOIN documents d ON d.id = dc.document_id
-                WHERE dc.workspace_id = :workspace_id
+                WHERE {kw_scope}
                   AND d.status = 'ready'
-                  {conn_filter}
                   AND dc.content_tsv @@ plainto_tsquery('simple', :query)
                 ORDER BY ts_rank(dc.content_tsv, plainto_tsquery('simple', :query)) DESC
                 LIMIT :limit
@@ -144,6 +158,7 @@ async def search_similar_chunks(
                 "workspace_id": str(workspace_id),
                 "query": query_text,
                 "limit": top_k * 3,
+                **kw_params_extra,
             }
             if db_connection_id is not None:
                 params["conn_id"] = str(db_connection_id)

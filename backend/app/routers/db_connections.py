@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_db
-from app.deps import require_workspace_manager, require_workspace_member
+from app.deps import require_admin, require_workspace_manager, require_workspace_member
 from app.models.db_connection import DbConnection
 from app.models.document import Document, DocumentKind
 from app.models.user import User
@@ -17,6 +17,7 @@ from app.schemas.db_connection import (
     DbConnectionCreate,
     DbConnectionOut,
     DbConnectionTestRequest,
+    ShareUpdate,
 )
 from app.schemas.document import DocumentOut
 from app.security import encrypt_secret
@@ -163,6 +164,23 @@ async def list_schema_docs(
         .order_by(Document.created_at.desc())
     )
     return result.scalars().all()
+
+
+@router.patch("/{connection_id}/share", response_model=DbConnectionOut)
+async def share_connection(
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    payload: ShareUpdate,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await db.get(DbConnection, connection_id)
+    if not conn or conn.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+    conn.is_shared = payload.is_shared
+    await db.commit()
+    await db.refresh(conn)
+    return conn
 
 
 @router.patch("/{connection_id}/allowlist", response_model=DbConnectionOut)

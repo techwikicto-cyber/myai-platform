@@ -11,7 +11,8 @@ import {
 import type { DocumentDto } from '../api/documents'
 import { ApiError } from '../api/client'
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select, Spinner } from './ui'
-import { IconDatabase, IconDocument, IconPlus, IconTrash, IconUpload } from './icons'
+import { IconDatabase, IconDocument, IconGlobe, IconPlus, IconTrash, IconUpload } from './icons'
+import { useAuthStore } from '../store/auth'
 
 const ENGINES: DbEngine[] = ['postgres', 'mysql', 'mssql', 'oracle', 'mongodb']
 
@@ -222,6 +223,8 @@ function ConnectionCard({
   connection: DbConnectionDto
   onChanged: () => void
 }) {
+  const currentUser = useAuthStore((s) => s.user)
+  const isAdmin = currentUser?.role === 'admin'
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [schemaDocs, setSchemaDocs] = useState<DocumentDto[]>([])
@@ -272,6 +275,11 @@ function ConnectionCard({
     onChanged()
   }
 
+  async function handleToggleShare() {
+    await dbConnectionsApi.setShared(workspaceId, connection.id, !connection.is_shared)
+    onChanged()
+  }
+
   async function handleUploadSchemaDoc(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -308,9 +316,25 @@ function ConnectionCard({
             </p>
           </div>
         </div>
-        <Button variant="destructive" size="sm" onClick={handleDelete} title="حذف اتصال">
-          <IconTrash />
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={handleToggleShare}
+              title={connection.is_shared ? 'لغو اشتراک‌گذاری با سایر فضاهای کاری' : 'اشتراک‌گذاری با همه فضاهای کاری'}
+              className={clsx(
+                'rounded-md p-1.5 transition-colors',
+                connection.is_shared
+                  ? 'text-primary hover:text-primary/80'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <IconGlobe />
+            </button>
+          )}
+          <Button variant="destructive" size="sm" onClick={handleDelete} title="حذف اتصال">
+            <IconTrash />
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 p-5 pb-4">

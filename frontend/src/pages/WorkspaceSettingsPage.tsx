@@ -6,9 +6,10 @@ import { usersApi } from '../api/users'
 import { documentsApi, type DocumentDto } from '../api/documents'
 import DbConnectionsPanel from '../components/DbConnectionsPanel'
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Spinner, Textarea } from '../components/ui'
-import { IconDatabase, IconDocument, IconSettings, IconTrash, IconUpload, IconUserPlus, IconUsers } from '../components/icons'
+import { IconDatabase, IconDocument, IconGlobe, IconSettings, IconTrash, IconUpload, IconUserPlus, IconUsers } from '../components/icons'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useNavigate } from 'react-router-dom'
 import type { User, Workspace, WorkspaceMember } from '../types'
 
 const statusBadge: Record<string, { kind: 'success' | 'error' | 'warning' | 'muted'; label: string }> = {
@@ -54,6 +55,7 @@ function ScrollingName({ name }: { name: string }) {
 export default function WorkspaceSettingsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const currentUser = useAuthStore((s) => s.user)
+  const navigate = useNavigate()
   const [tab, setTab] = useState<'general' | 'documents' | 'database' | 'members'>('general')
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [name, setName] = useState('')
@@ -147,6 +149,19 @@ export default function WorkspaceSettingsPage() {
     if (!workspaceId) return
     await documentsApi.remove(workspaceId, docId)
     await reloadDocuments()
+  }
+
+  async function handleToggleShareDoc(doc: DocumentDto) {
+    if (!workspaceId) return
+    await documentsApi.setShared(workspaceId, doc.id, !doc.is_shared)
+    await reloadDocuments()
+  }
+
+  async function handleDeleteWorkspace() {
+    if (!workspaceId || !workspace) return
+    if (!confirm(`فضای کاری «${workspace.name}» و تمام محتوای آن (اسناد، گفتگوها، اتصال‌های دیتابیس) حذف شود؟ این عمل برگشت‌ناپذیر است.`)) return
+    await workspacesApi.remove(workspaceId)
+    navigate('/')
   }
 
   async function handleAddMember(user: User) {
@@ -247,6 +262,20 @@ export default function WorkspaceSettingsPage() {
               </div>
             </form>
           </Card>
+          {isAdmin && (
+            <Card className="mt-6 border-destructive/40">
+              <CardHeader
+                title="منطقه خطر"
+                description="این عملیات برگشت‌ناپذیر است و تمام محتوای فضای کاری پاک می‌شود"
+              />
+              <div className="p-6 pt-0">
+                <Button variant="destructive" onClick={handleDeleteWorkspace}>
+                  <IconTrash />
+                  حذف این فضای کاری
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
@@ -299,6 +328,20 @@ export default function WorkspaceSettingsPage() {
                         <span className={d.status === 'pending' || d.status === 'processing' ? 'animate-pulse' : ''}>
                           <Badge kind={statusBadge[d.status].kind}>{statusBadge[d.status].label}</Badge>
                         </span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleToggleShareDoc(d)}
+                            title={d.is_shared ? 'لغو اشتراک‌گذاری' : 'اشتراک‌گذاری با همه فضاهای کاری'}
+                            className={clsx(
+                              'rounded-md p-1 transition-colors',
+                              d.is_shared
+                                ? 'text-primary hover:text-primary/80'
+                                : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            <IconGlobe />
+                          </button>
+                        )}
                         <Button variant="destructive" size="sm" onClick={() => handleDeleteDoc(d.id)} title="حذف سند">
                           <IconTrash />
                         </Button>

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import get_current_user, require_workspace_manager, require_workspace_member
+from app.deps import get_current_user, require_admin, require_workspace_manager, require_workspace_member
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import (
@@ -102,7 +102,7 @@ async def update_workspace(
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workspace(
     workspace_id: uuid.UUID,
-    user: User = Depends(require_workspace_manager),
+    user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     workspace = await db.get(Workspace, workspace_id)

@@ -32,10 +32,15 @@ class DbConnectionOut(BaseModel):
     options: dict
     schema_summary: dict | None
     allowed_tables: dict | None
+    is_shared: bool
     last_introspected_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ShareUpdate(BaseModel):
+    is_shared: bool
 
 
 class AllowedTablesUpdate(BaseModel):
