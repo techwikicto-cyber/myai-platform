@@ -17,8 +17,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(conn)
+
     # 1. Table/column allowlist per DB connection
-    op.add_column('db_connections', sa.Column('allowed_tables', sa.JSON(), nullable=True))
+    existing_cols = {c['name'] for c in inspector.get_columns('db_connections')}
+    if 'allowed_tables' not in existing_cols:
+        op.add_column('db_connections', sa.Column('allowed_tables', sa.JSON(), nullable=True))
 
     # 2. tsvector column for hybrid BM25+vector search (generated, auto-populated for existing rows)
     op.execute(
@@ -32,28 +38,32 @@ def upgrade() -> None:
     )
 
     # 3. Audit log for every DB query (success, rejected, error)
-    op.create_table(
-        'query_audit_logs',
-        sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('workspace_id', sa.UUID(), nullable=False),
-        sa.Column('db_connection_id', sa.UUID(), nullable=True),
-        sa.Column('user_id', sa.UUID(), nullable=True),
-        sa.Column('thread_id', sa.UUID(), nullable=True),
-        sa.Column('raw_query', sa.Text(), nullable=False),
-        sa.Column('executed_query', sa.Text(), nullable=True),
-        sa.Column('status', sa.Enum('success', 'rejected', 'error', name='query_audit_status'), nullable=False),
-        sa.Column('error_message', sa.Text(), nullable=True),
-        sa.Column('row_count', sa.Integer(), nullable=True),
-        sa.Column('duration_ms', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.ForeignKeyConstraint(['db_connection_id'], ['db_connections.id'], ondelete='SET NULL'),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='SET NULL'),
-        sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-    )
-    op.create_index('ix_query_audit_logs_workspace_id', 'query_audit_logs', ['workspace_id'])
-    op.create_index('ix_query_audit_logs_user_id', 'query_audit_logs', ['user_id'])
-    op.create_index('ix_query_audit_logs_created_at', 'query_audit_logs', ['created_at'])
+    if 'query_audit_logs' not in inspector.get_table_names():
+        op.execute(
+            "CREATE TYPE IF NOT EXISTS query_audit_status AS ENUM ('success', 'rejected', 'error')"
+        )
+        op.create_table(
+            'query_audit_logs',
+            sa.Column('id', sa.UUID(), nullable=False),
+            sa.Column('workspace_id', sa.UUID(), nullable=False),
+            sa.Column('db_connection_id', sa.UUID(), nullable=True),
+            sa.Column('user_id', sa.UUID(), nullable=True),
+            sa.Column('thread_id', sa.UUID(), nullable=True),
+            sa.Column('raw_query', sa.Text(), nullable=False),
+            sa.Column('executed_query', sa.Text(), nullable=True),
+            sa.Column('status', sa.Enum('success', 'rejected', 'error', name='query_audit_status', create_type=False), nullable=False),
+            sa.Column('error_message', sa.Text(), nullable=True),
+            sa.Column('row_count', sa.Integer(), nullable=True),
+            sa.Column('duration_ms', sa.Integer(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.ForeignKeyConstraint(['db_connection_id'], ['db_connections.id'], ondelete='SET NULL'),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='SET NULL'),
+            sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('id'),
+        )
+        op.create_index('ix_query_audit_logs_workspace_id', 'query_audit_logs', ['workspace_id'])
+        op.create_index('ix_query_audit_logs_user_id', 'query_audit_logs', ['user_id'])
+        op.create_index('ix_query_audit_logs_created_at', 'query_audit_logs', ['created_at'])
 
 
 def downgrade() -> None:
