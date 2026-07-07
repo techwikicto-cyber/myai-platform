@@ -126,8 +126,8 @@ async def send_message(
                 thread.workspace_id, query_vector, db, query_text=payload.content
             )
             if chunks:
-                parts = [f"[منبع: {c.filename}]\n{c.content}" for c in chunks]
-                extra_context = "\n\n---\n\n".join(parts)
+                parts = [f"【منبع: {c.filename}】\n{c.content}" for c in chunks]
+                extra_context = "\n\n".join(parts)
         except Exception:  # noqa: BLE001
             extra_context = None
 

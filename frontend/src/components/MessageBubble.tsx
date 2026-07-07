@@ -38,7 +38,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
           {showTyping ? (
             <TypingDots />
           ) : (
-            <div className="markdown-body">
+            <div className="markdown-body [&_hr]:my-3 [&_hr]:border-border">
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                 {message.content}
               </ReactMarkdown>

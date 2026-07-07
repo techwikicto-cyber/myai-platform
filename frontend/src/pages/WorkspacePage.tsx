@@ -81,6 +81,10 @@ export default function WorkspacePage() {
       setError(err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
     } finally {
       setSending(false)
+      // Ensure the assistant bubble is never stuck in pending state after stream ends
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantMsg.id && m.pending ? { ...m, pending: false } : m)),
+      )
     }
   }
 
