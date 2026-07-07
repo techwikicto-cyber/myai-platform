@@ -35,8 +35,21 @@ export interface TestResult {
   message: string
 }
 
+export interface SharedConnectionDto {
+  id: string
+  name: string
+  engine: DbEngine
+  host: string
+  database: string
+  source_workspace_name: string
+  schema_summary: Record<string, unknown> | null
+  last_introspected_at: string | null
+  created_at: string
+}
+
 export const dbConnectionsApi = {
   list: (workspaceId: string) => api.get<DbConnectionDto[]>(`/workspaces/${workspaceId}/db-connections`),
+  listShared: (workspaceId: string) => api.get<SharedConnectionDto[]>(`/workspaces/${workspaceId}/db-connections/shared`),
   create: (workspaceId: string, payload: DbConnectionCreate) =>
     api.post<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections`, payload),
   testNew: (workspaceId: string, payload: DbConnectionCreate) =>

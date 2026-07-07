@@ -13,12 +13,14 @@ from app.models.db_connection import DbConnection
 from app.models.document import Document, DocumentKind
 from app.models.sharing import DbConnectionWorkspaceShare
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.db_connection import (
     AllowedTablesUpdate,
     ConnectionTestResult,
     DbConnectionCreate,
     DbConnectionOut,
     DbConnectionTestRequest,
+    SharedConnectionOut,
     ShareUpdate,
 )
 from app.schemas.document import DocumentOut
@@ -75,6 +77,35 @@ def _conn_out(conn: DbConnection, shared_ids: list[uuid.UUID]) -> DbConnectionOu
         last_introspected_at=conn.last_introspected_at,
         created_at=conn.created_at,
     )
+
+
+@router.get("/shared", response_model=list[SharedConnectionOut])
+async def list_shared_connections(
+    workspace_id: uuid.UUID,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(DbConnection, Workspace.name)
+        .join(DbConnectionWorkspaceShare, DbConnectionWorkspaceShare.db_connection_id == DbConnection.id)
+        .join(Workspace, Workspace.id == DbConnection.workspace_id)
+        .where(DbConnectionWorkspaceShare.workspace_id == workspace_id)
+        .order_by(DbConnection.created_at.desc())
+    )
+    return [
+        SharedConnectionOut(
+            id=conn.id,
+            name=conn.name,
+            engine=conn.engine,
+            host=conn.host,
+            database=conn.database,
+            source_workspace_name=ws_name,
+            schema_summary=conn.schema_summary,
+            last_introspected_at=conn.last_introspected_at,
+            created_at=conn.created_at,
+        )
+        for conn, ws_name in result.all()
+    ]
 
 
 @router.post("/test", response_model=ConnectionTestResult)

@@ -12,8 +12,19 @@ export interface DocumentDto {
   created_at: string
 }
 
+export interface SharedDocumentDto {
+  id: string
+  filename: string
+  source_type: string
+  status: DocumentStatus
+  error_message: string | null
+  source_workspace_name: string
+  created_at: string
+}
+
 export const documentsApi = {
   list: (workspaceId: string) => api.get<DocumentDto[]>(`/workspaces/${workspaceId}/documents`),
+  listShared: (workspaceId: string) => api.get<SharedDocumentDto[]>(`/workspaces/${workspaceId}/documents/shared`),
   upload: (workspaceId: string, file: File) => {
     const formData = new FormData()
     formData.append('file', file)

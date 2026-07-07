@@ -10,6 +10,16 @@ class DocumentShareUpdate(BaseModel):
     workspace_ids: list[uuid.UUID]
 
 
+class SharedDocumentOut(BaseModel):
+    id: uuid.UUID
+    filename: str
+    source_type: str
+    status: DocumentStatus
+    error_message: str | None
+    source_workspace_name: str
+    created_at: datetime
+
+
 class DocumentOut(BaseModel):
     id: uuid.UUID
     filename: str

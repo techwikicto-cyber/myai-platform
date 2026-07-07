@@ -11,7 +11,8 @@ from app.deps import require_admin, require_workspace_manager, require_workspace
 from app.models.document import Document, DocumentKind
 from app.models.sharing import DocumentWorkspaceShare
 from app.models.user import User
-from app.schemas.document import DocumentOut, DocumentShareUpdate
+from app.models.workspace import Workspace
+from app.schemas.document import DocumentOut, DocumentShareUpdate, SharedDocumentOut
 from app.services.parsers import SUPPORTED_EXTENSIONS, extension_of
 from app.services.rag import process_document_background
 
@@ -43,6 +44,36 @@ def _doc_out(doc: Document, shared_ids: list[uuid.UUID]) -> DocumentOut:
         shared_workspace_ids=shared_ids,
         created_at=doc.created_at,
     )
+
+
+@router.get("/shared", response_model=list[SharedDocumentOut])
+async def list_shared_documents(
+    workspace_id: uuid.UUID,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Document, Workspace.name)
+        .join(DocumentWorkspaceShare, DocumentWorkspaceShare.document_id == Document.id)
+        .join(Workspace, Workspace.id == Document.workspace_id)
+        .where(
+            DocumentWorkspaceShare.workspace_id == workspace_id,
+            Document.kind == DocumentKind.workspace_doc,
+        )
+        .order_by(Document.created_at.desc())
+    )
+    return [
+        SharedDocumentOut(
+            id=doc.id,
+            filename=doc.filename,
+            source_type=doc.source_type,
+            status=doc.status,
+            error_message=doc.error_message,
+            source_workspace_name=ws_name,
+            created_at=doc.created_at,
+        )
+        for doc, ws_name in result.all()
+    ]
 
 
 @router.get("", response_model=list[DocumentOut])

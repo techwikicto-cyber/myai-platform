@@ -7,6 +7,7 @@ import {
   type DbConnectionCreate,
   type DbConnectionDto,
   type DbEngine,
+  type SharedConnectionDto,
 } from '../api/dbConnections'
 import type { DocumentDto } from '../api/documents'
 import { ApiError } from '../api/client'
@@ -414,10 +415,16 @@ function ConnectionCard({
 
 export default function DbConnectionsPanel({ workspaceId }: { workspaceId: string }) {
   const [connections, setConnections] = useState<DbConnectionDto[]>([])
+  const [sharedConnections, setSharedConnections] = useState<SharedConnectionDto[]>([])
   const [showForm, setShowForm] = useState(false)
 
   const reload = useCallback(async () => {
-    setConnections(await dbConnectionsApi.list(workspaceId))
+    const [own, shared] = await Promise.all([
+      dbConnectionsApi.list(workspaceId),
+      dbConnectionsApi.listShared(workspaceId),
+    ])
+    setConnections(own)
+    setSharedConnections(shared)
   }, [workspaceId])
 
   useEffect(() => {
@@ -465,6 +472,37 @@ export default function DbConnectionsPanel({ workspaceId }: { workspaceId: strin
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-12 text-center">
           <IconDatabase className="size-8 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">هنوز اتصال دیتابیسی ثبت نشده است</p>
+        </div>
+      )}
+
+      {sharedConnections.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <IconGlobe className="size-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">اتصال‌های به‌اشتراک‌گذاشته‌شده با این فضا</h3>
+          </div>
+          {sharedConnections.map((c) => (
+            <Card key={c.id} className="mb-3">
+              <div className="flex items-center gap-3 p-4">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                  <IconDatabase className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-foreground">{c.name}</span>
+                    <Badge kind="muted">{ENGINE_LABELS[c.engine]}</Badge>
+                    <Badge kind="info">
+                      <IconGlobe className="size-3" />
+                      {c.source_workspace_name}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground" dir="ltr">
+                    {c.host}/{c.database}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </div>

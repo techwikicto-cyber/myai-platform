@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { workspacesApi } from '../api/workspaces'
 import { usersApi } from '../api/users'
-import { documentsApi, type DocumentDto } from '../api/documents'
+import { documentsApi, type DocumentDto, type SharedDocumentDto } from '../api/documents'
 import DbConnectionsPanel from '../components/DbConnectionsPanel'
 import ShareModal from '../components/ShareModal'
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Spinner, Textarea } from '../components/ui'
@@ -64,6 +64,7 @@ export default function WorkspaceSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
   const [documents, setDocuments] = useState<DocumentDto[]>([])
+  const [sharedDocs, setSharedDocs] = useState<SharedDocumentDto[]>([])
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -82,7 +83,12 @@ export default function WorkspaceSettingsPage() {
 
   const reloadDocuments = useCallback(async () => {
     if (!workspaceId) return
-    setDocuments(await documentsApi.list(workspaceId))
+    const [own, shared] = await Promise.all([
+      documentsApi.list(workspaceId),
+      documentsApi.listShared(workspaceId),
+    ])
+    setDocuments(own)
+    setSharedDocs(shared)
   }, [workspaceId])
 
   const reloadMembers = useCallback(async () => {
@@ -370,6 +376,34 @@ export default function WorkspaceSettingsPage() {
               )}
             </div>
           </Card>
+
+          {sharedDocs.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader
+                title="مستندات به‌اشتراک‌گذاشته‌شده"
+                description="این مستندات توسط ادمین از فضاهای کاری دیگر با شما به اشتراک گذاشته شده‌اند و در جستجو لحاظ می‌شوند"
+              />
+              <div className="p-6 pt-4">
+                <ul className="divide-y divide-border">
+                  {sharedDocs.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between gap-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <IconDocument className="size-4 shrink-0 text-muted-foreground" />
+                        <ScrollingName name={d.filename} />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs text-primary">
+                          <IconGlobe className="size-3" />
+                          {d.source_workspace_name}
+                        </span>
+                        <Badge kind={statusBadge[d.status].kind}>{statusBadge[d.status].label}</Badge>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
