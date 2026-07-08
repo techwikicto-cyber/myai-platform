@@ -5,6 +5,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     freetds-dev \
     freetds-bin \
+    tesseract-ocr \
+    tesseract-ocr-fas \
+    tesseract-ocr-ara \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -11,9 +11,8 @@ SUPPORTED_EXTENSIONS = {"pdf", "docx", "xlsx", "xls", "csv", "txt", "md"} | IMAG
 # Fewer than this triggers OCR fallback (scanned PDF).
 _MIN_CHARS_PER_PAGE = 40
 
-# Lazy singleton — EasyOCR is expensive to initialise (~2-5 s, loads ~300 MB of models).
-_ocr_reader = None
-_OCR_MODEL_DIR = "/ocr_models"
+# Tesseract language string: Persian + English + Arabic
+_TESS_LANG = "fas+eng+ara"
 
 
 class ParseError(Exception):
@@ -86,40 +85,23 @@ def _extract_csv(content: bytes) -> str:
     return df.to_csv(index=False).strip()
 
 
-# ---------- OCR ----------
-
-def _get_ocr_reader():
-    """Lazy singleton for EasyOCR — initialised on first OCR call."""
-    global _ocr_reader
-    if _ocr_reader is None:
-        try:
-            import easyocr  # noqa: PLC0415
-            _ocr_reader = easyocr.Reader(
-                ["fa", "en", "ar"],
-                gpu=False,
-                verbose=False,
-                model_storage_directory=_OCR_MODEL_DIR,
-            )
-        except ImportError as exc:
-            raise ParseError("کتابخانه EasyOCR نصب نشده است") from exc
-    return _ocr_reader
-
+# ---------- OCR (Tesseract) ----------
 
 def _run_ocr(img_bytes: bytes) -> str:
-    """Run OCR on raw image bytes; returns extracted text."""
-    import numpy as np  # noqa: PLC0415
-    from PIL import Image as PILImage  # noqa: PLC0415
+    """Run Tesseract OCR on raw image bytes; returns extracted text."""
+    try:
+        import pytesseract  # noqa: PLC0415
+        from PIL import Image as PILImage  # noqa: PLC0415
+    except ImportError as exc:
+        raise ParseError("کتابخانه pytesseract یا Pillow نصب نشده است") from exc
 
-    reader = _get_ocr_reader()
     img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
-    results = reader.readtext(np.array(img), detail=1)
-    lines = [text for _, text, conf in results if conf > 0.3]
-    return "\n".join(lines)
+    return pytesseract.image_to_string(img, lang=_TESS_LANG)
 
 
 def _extract_image(content: bytes) -> str:
-    text = _run_ocr(content)
-    if not text.strip():
+    text = _run_ocr(content).strip()
+    if not text:
         raise ParseError("متنی در تصویر شناسایی نشد")
     return text
 
@@ -135,7 +117,7 @@ def _ocr_pdf(content: bytes) -> str:
     parts = []
     for page in doc:
         pix = page.get_pixmap(dpi=150)
-        page_text = _run_ocr(pix.tobytes("png"))
-        if page_text.strip():
+        page_text = _run_ocr(pix.tobytes("png")).strip()
+        if page_text:
             parts.append(page_text)
     return "\n\n".join(parts).strip()

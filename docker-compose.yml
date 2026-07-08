@@ -38,8 +38,6 @@ services:
       CORS_ORIGINS: '["*"]'
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - ocr_models:/ocr_models
     command: ["./entrypoint.sh"]
 
   frontend:
@@ -52,4 +50,3 @@ services:
 
 volumes:
   postgres_data:
-  ocr_models:
