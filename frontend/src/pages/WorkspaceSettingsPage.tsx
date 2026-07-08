@@ -293,7 +293,7 @@ export default function WorkspaceSettingsPage() {
           <Card>
             <CardHeader
               title="مستندات فضای کاری"
-              description="فایل‌های pdf، docx، xlsx، csv، txt، md و همچنین تصاویر (jpg، png، tiff و ...) — سیستم متن موجود در تصاویر و اسناد اسکن‌شده را به‌طور خودکار با OCR استخراج می‌کند"
+              description="فایل‌های متنی و یا تصاویر خود را آپلود کنید."
               action={
                 <label
                   className={clsx(
