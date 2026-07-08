@@ -46,7 +46,7 @@ export default function Sidebar() {
     clsx(
       'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
       isActive
-        ? 'bg-sidebar-accent font-medium text-sidebar-foreground'
+        ? 'bg-sidebar-primary-bg font-semibold text-sidebar-primary ring-1 ring-inset ring-sidebar-primary/20'
         : 'text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
     )
 
