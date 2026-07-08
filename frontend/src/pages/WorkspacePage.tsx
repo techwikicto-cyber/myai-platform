@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { chatApi, streamMessage } from '../api/chat'
 import { workspacesApi } from '../api/workspaces'
 import MessageBubble from '../components/MessageBubble'
-import { Alert, Button } from '../components/ui'
-import { IconChat, IconSend, IconSettings } from '../components/icons'
+import { Alert } from '../components/ui'
+import { IconChat, IconMic, IconSend, IconSettings, IconStop } from '../components/icons'
 import type { ChatMessage, Workspace } from '../types'
 
 export default function WorkspacePage() {
@@ -16,6 +16,8 @@ export default function WorkspacePage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!workspaceId) return
@@ -48,6 +50,7 @@ export default function WorkspacePage() {
 
     return () => {
       cancelled = true
+      abortControllerRef.current?.abort()
     }
   }, [workspaceId])
 
@@ -55,8 +58,16 @@ export default function WorkspacePage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault()
+  // Auto-resize textarea as content grows
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [input])
+
+  async function handleSend(e?: React.FormEvent) {
+    e?.preventDefault()
     if (!input.trim() || !threadId || sending) return
     setError('')
     const userText = input.trim()
@@ -67,6 +78,9 @@ export default function WorkspacePage() {
     const assistantMsg: ChatMessage = { id: `tmp-assistant-${Date.now()}`, role: 'assistant', content: '', pending: true }
     setMessages((prev) => [...prev, userMsg, assistantMsg])
 
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
       await streamMessage(threadId, userText, (event) => {
         if (event.type === 'token') {
@@ -76,17 +90,32 @@ export default function WorkspacePage() {
         } else if (event.type === 'error') {
           setError(event.message)
         }
-      })
+      }, controller.signal)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
+      if ((err as Error)?.name !== 'AbortError') {
+        setError(err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
+      }
     } finally {
+      abortControllerRef.current = null
       setSending(false)
-      // Ensure the assistant bubble is never stuck in pending state after stream ends
       setMessages((prev) =>
         prev.map((m) => (m.id === assistantMsg.id && m.pending ? { ...m, pending: false } : m)),
       )
     }
   }
+
+  function handleStop() {
+    abortControllerRef.current?.abort()
+  }
+
+  const handleEdit = useCallback((msgId: string, content: string) => {
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === msgId)
+      return idx === -1 ? prev : prev.slice(0, idx)
+    })
+    setInput(content)
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }, [])
 
   if (!workspaceId) return null
 
@@ -118,7 +147,11 @@ export default function WorkspacePage() {
             </div>
           )}
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              onEdit={m.role === 'user' ? () => handleEdit(m.id, m.content) : undefined}
+            />
           ))}
         </div>
       </div>
@@ -133,22 +166,51 @@ export default function WorkspacePage() {
           <form onSubmit={handleSend}>
             <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 transition-colors focus-within:border-primary">
               <textarea
+                ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    handleSend(e)
+                    handleSend()
                   }
                 }}
                 rows={1}
                 placeholder="پیام خود را بنویسید…"
                 className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
               />
-              <Button type="submit" size="sm" disabled={sending || !input.trim()} className="h-9">
-                <IconSend />
-                ارسال
-              </Button>
+
+              {/* Voice — coming soon */}
+              <button
+                type="button"
+                disabled
+                title="بزودی — ارسال پیام صوتی"
+                className="flex size-9 cursor-not-allowed items-center justify-center rounded-lg text-muted-foreground/30 transition-colors"
+              >
+                <IconMic />
+              </button>
+
+              {/* Stop / Send */}
+              {sending ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  title="توقف پاسخ"
+                  className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors hover:bg-destructive/20"
+                >
+                  <IconStop />
+                  توقف
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <IconSend />
+                  ارسال
+                </button>
+              )}
             </div>
             <p className="mt-1.5 px-1 text-[11px] text-muted-foreground/70">
               Enter برای ارسال — Shift+Enter برای خط جدید
