@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_connection import DbConnection, DbEngine
 from app.models.sharing import DbConnectionWorkspaceShare
+from app.services.db_engine_knowledge import get_engine_knowledge
 from app.services.db_query_tool import build_tool_schema, summarize_schema
 from app.services.rag import search_similar_chunks
 
@@ -49,10 +50,12 @@ async def build_db_tools_and_context(
             )
             doc_text = "\n".join(c.content for c in chunks)
 
+        engine_knowledge = get_engine_knowledge(conn.engine)
         context_parts.append(
             f"### اتصال دیتابیس «{conn.name}» (نوع: {conn.engine.value})\n"
             f"ساختار:\n{summarize_schema(conn)}\n\n"
-            f"توضیحات معنایی (از سند آموزش اسکیما):\n{doc_text or '(سندی آپلود نشده)'}"
+            f"توضیحات معنایی (از سند آموزش اسکیما):\n{doc_text or '(سندی آپلود نشده)'}\n\n"
+            f"{engine_knowledge}"
         )
 
     tools = [build_tool_schema(list(by_name.keys()), has_mongo, has_sql)]
