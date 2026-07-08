@@ -293,7 +293,7 @@ export default function WorkspaceSettingsPage() {
           <Card>
             <CardHeader
               title="مستندات فضای کاری"
-              description="فایل‌های pdf، docx، xlsx، csv، txt و md — می‌توانید چند فایل را همزمان انتخاب کنید؛ پردازش در پس‌زمینه انجام می‌شود"
+              description="فایل‌های pdf، docx، xlsx، csv، txt، md و همچنین تصاویر (jpg، png، tiff و ...) — سیستم متن موجود در تصاویر و اسناد اسکن‌شده را به‌طور خودکار با OCR استخراج می‌کند"
               action={
                 <label
                   className={clsx(
@@ -307,6 +307,7 @@ export default function WorkspaceSettingsPage() {
                     ref={fileInputRef}
                     type="file"
                     multiple
+                    accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.md,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp"
                     onChange={handleUpload}
                     disabled={uploading}
                     className="hidden"
