@@ -156,6 +156,10 @@ export const IconStop = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const IconChevronDown = icon(
+  <path d="M6 9l6 6 6-6" />,
+)
+
 export const IconMic = icon(
   <>
     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
