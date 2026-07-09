@@ -45,9 +45,8 @@ export default function MiniChart({ headers, rows }: ChartProps) {
       <svg
         width={chartW}
         height={chartH}
-        dir="ltr"
         className="block"
-        style={{ minWidth: chartW }}
+        style={{ minWidth: chartW, direction: 'ltr' }}
       >
         {rows.map((_, i) => {
           const barW = maxVal > 0 ? Math.max((values[i] / maxVal) * barMaxW, values[i] > 0 ? 2 : 0) : 0
