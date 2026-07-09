@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user, get_workspace_membership, require_workspace_member
+from app.models.document import Document, DocumentKind
 from app.models.thread import Message, MessageRole, Thread
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace
@@ -136,6 +137,20 @@ async def send_message(
     )
     if db_context:
         extra_context = f"{extra_context}\n\n{db_context}" if extra_context else db_context
+
+    # Always inject the list of ready documents so the model knows what files exist.
+    doc_result = await db.execute(
+        select(Document).where(
+            Document.workspace_id == thread.workspace_id,
+            Document.kind == DocumentKind.workspace_doc,
+            Document.status == "ready",
+        )
+    )
+    ready_docs = list(doc_result.scalars().all())
+    if ready_docs:
+        doc_list = "\n".join(f"- {d.filename}" for d in ready_docs)
+        doc_index = f"فایل‌های آپلود‌شده و پردازش‌شده در این فضای کاری:\n{doc_list}"
+        extra_context = f"{doc_index}\n\n{extra_context}" if extra_context else doc_index
 
     messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
