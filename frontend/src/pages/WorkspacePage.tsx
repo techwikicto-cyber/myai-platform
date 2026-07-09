@@ -8,7 +8,10 @@ import { workspacesApi } from '../api/workspaces'
 import MessageBubble from '../components/MessageBubble'
 import { Alert } from '../components/ui'
 import {
+  IconCheckSmall,
   IconChat,
+  IconCopy,
+  IconDownload,
   IconMic,
   IconPin,
   IconSend,
@@ -16,6 +19,7 @@ import {
   IconStop,
   IconX,
 } from '../components/icons'
+import { parseMarkdownTable, tableToCSV } from '../components/MiniChart'
 import { useThreadStore } from '../store/threads'
 import type { ChatMessage, PinDto, Workspace } from '../types'
 
@@ -351,6 +355,9 @@ export default function WorkspacePage() {
 
 function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }) {
   const [unpinning, setUnpinning] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const tableData = useMemo(() => parseMarkdownTable(pin.content_snapshot), [pin.content_snapshot])
 
   async function handleUnpin() {
     setUnpinning(true)
@@ -359,6 +366,28 @@ function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }
     } finally {
       setUnpinning(false)
     }
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(pin.content_snapshot)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* clipboard API unavailable */
+    }
+  }
+
+  function handleExport() {
+    if (!tableData) return
+    const csv = tableToCSV(tableData.headers, tableData.rows)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `pinned-report-${Date.now()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const date = new Date(pin.created_at).toLocaleDateString('fa-IR', {
@@ -372,14 +401,34 @@ function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }
     <div className="group rounded-lg border border-border bg-background p-3 text-xs">
       <div className="flex items-start justify-between gap-2">
         <span className="text-[10px] text-muted-foreground">{date}</span>
-        <button
-          onClick={handleUnpin}
-          disabled={unpinning}
-          title="حذف پین"
-          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
-        >
-          <IconX className="size-3" />
-        </button>
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            onClick={handleCopy}
+            title={copied ? 'کپی شد!' : 'کپی متن'}
+            className={`rounded p-0.5 transition-all hover:bg-muted ${
+              copied ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {copied ? <IconCheckSmall className="size-3" /> : <IconCopy className="size-3" />}
+          </button>
+          {tableData && (
+            <button
+              onClick={handleExport}
+              title="دانلود CSV"
+              className="rounded p-0.5 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
+            >
+              <IconDownload className="size-3" />
+            </button>
+          )}
+          <button
+            onClick={handleUnpin}
+            disabled={unpinning}
+            title="حذف پین"
+            className="rounded p-0.5 text-muted-foreground transition-all hover:bg-muted hover:text-destructive disabled:opacity-50"
+          >
+            <IconX className="size-3" />
+          </button>
+        </div>
       </div>
       <div className="markdown-body mt-1.5 max-h-48 overflow-y-auto text-xs leading-relaxed text-foreground/80">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
