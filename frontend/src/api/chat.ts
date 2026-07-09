@@ -15,6 +15,7 @@ export const chatApi = {
   createThread: (workspaceId: string, title?: string) =>
     api.post<ThreadDto>(`/workspaces/${workspaceId}/threads`, { title }),
   deleteThread: (threadId: string) => api.delete<void>(`/threads/${threadId}`),
+  renameThread: (threadId: string, title: string) => api.patch<ThreadDto>(`/threads/${threadId}`, { title }),
   listMessages: (threadId: string) => api.get<ChatMessage[]>(`/threads/${threadId}/messages`),
 }
 

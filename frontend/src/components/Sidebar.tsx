@@ -10,11 +10,11 @@ import type { ThreadDto } from '../api/chat'
 import {
   IconChat,
   IconChevronDown,
+  IconEdit,
   IconLogout,
   IconPlus,
   IconSettings,
   IconSparkles,
-  IconTrash,
   IconX,
 } from './icons'
 
@@ -30,6 +30,8 @@ export default function Sidebar() {
   const [newName, setNewName] = useState('')
   const [wsOpen, setWsOpen] = useState(true)
   const [deletingThread, setDeletingThread] = useState<string | null>(null)
+  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
@@ -76,6 +78,29 @@ export default function Sidebar() {
     const t = await chatApi.createThread(activeWorkspaceId)
     threadStore.upsertThread(activeWorkspaceId, t)
     navigate(`/workspace/${activeWorkspaceId}/thread/${t.id}`)
+  }
+
+  function startRename(t: ThreadDto, e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setRenamingThreadId(t.id)
+    setRenameValue(t.title)
+  }
+
+  async function commitRename() {
+    if (!activeWorkspaceId || !renamingThreadId) return
+    const title = renameValue.trim()
+    const threadId = renamingThreadId
+    setRenamingThreadId(null)
+    if (!title) return
+    const current = threads.find((t) => t.id === threadId)
+    if (current && current.title === title) return
+    try {
+      const updated = await chatApi.renameThread(threadId, title)
+      threadStore.upsertThread(activeWorkspaceId, updated)
+    } catch {
+      /* rename failed silently — title stays as-is */
+    }
   }
 
   async function handleDeleteThread(threadId: string, e: React.MouseEvent) {
@@ -212,21 +237,52 @@ export default function Sidebar() {
                             : 'text-sidebar-muted hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
                         )}
                       >
-                        <NavLink
-                          to={`/workspace/${w.id}/thread/${t.id}`}
-                          className="flex min-w-0 flex-1 items-center gap-1.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span className="truncate">{t.title}</span>
-                        </NavLink>
-                        <button
-                          onClick={(e) => handleDeleteThread(t.id, e)}
-                          disabled={deletingThread === t.id}
-                          className="shrink-0 rounded p-0.5 text-sidebar-muted/50 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100 disabled:opacity-50"
-                          title="حذف گفتگو"
-                        >
-                          <IconX className="size-3" />
-                        </button>
+                        {renamingThreadId === t.id ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                commitRename()
+                              } else if (e.key === 'Escape') {
+                                setRenamingThreadId(null)
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="min-w-0 flex-1 rounded border border-primary/40 bg-sidebar-accent px-1 py-0.5 text-xs text-sidebar-foreground outline-none"
+                          />
+                        ) : (
+                          <NavLink
+                            to={`/workspace/${w.id}/thread/${t.id}`}
+                            className="flex min-w-0 flex-1 items-center gap-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => startRename(t, e)}
+                          >
+                            <span className="truncate">{t.title}</span>
+                          </NavLink>
+                        )}
+                        {renamingThreadId !== t.id && (
+                          <>
+                            <button
+                              onClick={(e) => startRename(t, e)}
+                              className="shrink-0 rounded p-0.5 text-sidebar-muted/50 opacity-0 transition-all hover:text-sidebar-foreground group-hover:opacity-100"
+                              title="تغییر نام گفتگو"
+                            >
+                              <IconEdit className="size-3" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteThread(t.id, e)}
+                              disabled={deletingThread === t.id}
+                              className="shrink-0 rounded p-0.5 text-sidebar-muted/50 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100 disabled:opacity-50"
+                              title="حذف گفتگو"
+                            >
+                              <IconX className="size-3" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>

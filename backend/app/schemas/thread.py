@@ -20,6 +20,10 @@ class ThreadCreate(BaseModel):
     title: str | None = None
 
 
+class ThreadRename(BaseModel):
+    title: str
+
+
 class MessageOut(BaseModel):
     id: uuid.UUID
     role: MessageRole

@@ -13,7 +13,7 @@ from app.models.pinned import PinnedMessage
 from app.models.thread import Message, MessageRole, Thread
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace
-from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, ThreadCreate, ThreadOut
+from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, ThreadCreate, ThreadOut, ThreadRename
 from app.services.chat_context import build_messages
 from app.services.db_chat import build_db_tools_and_context
 from app.services.db_query_tool import run_tool_call
@@ -77,6 +77,21 @@ async def create_thread(
 async def delete_thread(thread: Thread = Depends(get_owned_thread), db: AsyncSession = Depends(get_db)):
     await db.delete(thread)
     await db.commit()
+
+
+@router.patch("/api/threads/{thread_id}", response_model=ThreadOut)
+async def rename_thread(
+    payload: ThreadRename,
+    thread: Thread = Depends(get_owned_thread),
+    db: AsyncSession = Depends(get_db),
+):
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="عنوان نمی‌تواند خالی باشد")
+    thread.title = title[:255]
+    await db.commit()
+    await db.refresh(thread)
+    return thread
 
 
 @router.get("/api/threads/{thread_id}/messages", response_model=list[MessageOut])
