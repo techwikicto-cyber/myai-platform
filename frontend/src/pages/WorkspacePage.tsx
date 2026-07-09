@@ -50,7 +50,8 @@ export default function WorkspacePage() {
 
     return () => {
       cancelled = true
-      abortControllerRef.current?.abort()
+      // Do NOT abort in-flight stream here — let it complete and save to DB.
+      // The Stop button is the explicit user action for aborting.
     }
   }, [workspaceId])
 

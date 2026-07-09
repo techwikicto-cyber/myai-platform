@@ -141,6 +141,7 @@ async def send_message(
 
     async def event_stream():
         full_content = ""
+        completed = False
         try:
             if db_tools:
                 content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
@@ -178,19 +179,32 @@ async def send_message(
                     if event["type"] == "token":
                         full_content += event["content"]
                         yield _sse({"type": "token", "content": event["content"]})
+
+            # Normal completion — save and signal done.
+            assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
+            db.add(assistant_message)
+            if thread.title == "گفتگوی جدید":
+                thread.title = payload.content[:60]
+            await db.commit()
+            await db.refresh(assistant_message)
+            completed = True
+            yield _sse({"type": "done", "message_id": str(assistant_message.id)})
+
         except LlmError as exc:
             yield _sse({"type": "error", "message": str(exc)})
-            return
         except Exception as exc:  # noqa: BLE001
             yield _sse({"type": "error", "message": f"خطا در ارتباط با مدل زبانی: {exc}"})
-            return
-
-        assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
-        db.add(assistant_message)
-        if thread.title == "گفتگوی جدید":
-            thread.title = payload.content[:60]
-        await db.commit()
-        await db.refresh(assistant_message)
-        yield _sse({"type": "done", "message_id": str(assistant_message.id)})
+        finally:
+            # Client disconnected mid-stream (GeneratorExit / aclose).
+            # Save whatever was generated so far so the user sees it on return.
+            if not completed and full_content:
+                try:
+                    partial = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
+                    db.add(partial)
+                    if thread.title == "گفتگوی جدید":
+                        thread.title = payload.content[:60]
+                    await db.commit()
+                except Exception:  # noqa: BLE001
+                    pass
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
