@@ -38,6 +38,7 @@ class MessageCreate(BaseModel):
 
 
 class PinCreate(BaseModel):
+    question_snapshot: str = ""
     content_snapshot: str
 
 
@@ -45,6 +46,7 @@ class PinOut(BaseModel):
     id: uuid.UUID
     message_id: uuid.UUID
     workspace_id: uuid.UUID
+    question_snapshot: str
     content_snapshot: str
     created_at: datetime
 

@@ -44,6 +44,7 @@ export interface PinDto {
   id: string
   message_id: string
   workspace_id: string
+  question_snapshot: string
   content_snapshot: string
   created_at: string
 }

@@ -14,6 +14,7 @@ import {
   IconDownload,
   IconMic,
   IconPin,
+  IconRedo,
   IconSend,
   IconSettings,
   IconStop,
@@ -187,9 +188,22 @@ export default function WorkspacePage() {
         setPins((prev) => prev.filter((p) => p.id !== pin.id))
       }
     } else {
-      const newPin = await pinsApi.create(messageId, content)
+      const idx = messages.findIndex((m) => m.id === messageId)
+      let question = ''
+      for (let i = idx - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          question = messages[i].content
+          break
+        }
+      }
+      const newPin = await pinsApi.create(messageId, question, content)
       setPins((prev) => [newPin, ...prev])
     }
+  }
+
+  function handleAskAgain(question: string) {
+    setInput(question)
+    setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
   if (!workspaceId) return null
@@ -284,6 +298,7 @@ export default function WorkspacePage() {
                     await pinsApi.delete(pin.id)
                     setPins((prev) => prev.filter((p) => p.id !== pin.id))
                   }}
+                  onAskAgain={handleAskAgain}
                 />
               ))}
             </div>
@@ -353,9 +368,18 @@ export default function WorkspacePage() {
   )
 }
 
-function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }) {
+function PinCard({
+  pin,
+  onUnpin,
+  onAskAgain,
+}: {
+  pin: PinDto
+  onUnpin: () => Promise<void>
+  onAskAgain: (question: string) => void
+}) {
   const [unpinning, setUnpinning] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [questionCopied, setQuestionCopied] = useState(false)
 
   const tableData = useMemo(() => parseMarkdownTable(pin.content_snapshot), [pin.content_snapshot])
 
@@ -369,10 +393,23 @@ function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }
   }
 
   async function handleCopy() {
+    const fullText = pin.question_snapshot
+      ? `سوال:\n${pin.question_snapshot}\n\nپاسخ:\n${pin.content_snapshot}`
+      : pin.content_snapshot
     try {
-      await navigator.clipboard.writeText(pin.content_snapshot)
+      await navigator.clipboard.writeText(fullText)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* clipboard API unavailable */
+    }
+  }
+
+  async function handleCopyQuestion() {
+    try {
+      await navigator.clipboard.writeText(pin.question_snapshot)
+      setQuestionCopied(true)
+      setTimeout(() => setQuestionCopied(false), 2000)
     } catch {
       /* clipboard API unavailable */
     }
@@ -404,7 +441,7 @@ function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             onClick={handleCopy}
-            title={copied ? 'کپی شد!' : 'کپی متن'}
+            title={copied ? 'کپی شد!' : 'کپی سوال و پاسخ'}
             className={`rounded p-0.5 transition-all hover:bg-muted ${
               copied ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -430,6 +467,34 @@ function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }
           </button>
         </div>
       </div>
+
+      {pin.question_snapshot && (
+        <div className="group/q mt-1.5 flex items-start justify-between gap-2 rounded-md bg-muted/60 px-2 py-1.5">
+          <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-foreground/70">
+            <span className="font-medium text-foreground/90">سوال: </span>
+            {pin.question_snapshot}
+          </p>
+          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/q:opacity-100">
+            <button
+              onClick={handleCopyQuestion}
+              title={questionCopied ? 'کپی شد!' : 'کپی سوال'}
+              className={`rounded p-0.5 transition-all hover:bg-background ${
+                questionCopied ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {questionCopied ? <IconCheckSmall className="size-3" /> : <IconCopy className="size-3" />}
+            </button>
+            <button
+              onClick={() => onAskAgain(pin.question_snapshot)}
+              title="پرسیدن دوباره این سوال"
+              className="rounded p-0.5 text-muted-foreground transition-all hover:bg-background hover:text-primary"
+            >
+              <IconRedo className="size-3" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="markdown-body mt-1.5 max-h-48 overflow-y-auto text-xs leading-relaxed text-foreground/80">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {pin.content_snapshot.slice(0, 800) + (pin.content_snapshot.length > 800 ? '…' : '')}

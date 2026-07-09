@@ -265,6 +265,7 @@ async def pin_message(
         workspace_id=thread.workspace_id,
         message_id=message_id,
         user_id=user.id,
+        question_snapshot=payload.question_snapshot,
         content_snapshot=payload.content_snapshot,
     )
     db.add(pin)
