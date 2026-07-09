@@ -307,7 +307,7 @@ export default function WorkspaceSettingsPage() {
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.md,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp"
+                    accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.md"
                     onChange={handleUpload}
                     disabled={uploading}
                     className="hidden"

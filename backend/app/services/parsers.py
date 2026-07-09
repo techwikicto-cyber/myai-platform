@@ -4,15 +4,7 @@ import pandas as pd
 from docx import Document as DocxDocument
 from pypdf import PdfReader
 
-IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "tiff", "tif", "bmp", "webp"}
-SUPPORTED_EXTENSIONS = {"pdf", "docx", "xlsx", "xls", "csv", "txt", "md"} | IMAGE_EXTENSIONS
-
-# Minimum characters expected per page in a text-based PDF.
-# Fewer than this triggers OCR fallback (scanned PDF).
-_MIN_CHARS_PER_PAGE = 40
-
-# Tesseract language string: Persian + English + Arabic
-_TESS_LANG = "fas+eng+ara"
+SUPPORTED_EXTENSIONS = {"pdf", "docx", "xlsx", "xls", "csv", "txt", "md"}
 
 
 class ParseError(Exception):
@@ -36,8 +28,6 @@ def extract_text(filename: str, content: bytes) -> str:
             return _extract_csv(content)
         if ext in ("txt", "md"):
             return content.decode("utf-8", errors="ignore")
-        if ext in IMAGE_EXTENSIONS:
-            return _extract_image(content)
     except ParseError:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -45,19 +35,10 @@ def extract_text(filename: str, content: bytes) -> str:
     raise ParseError(f"فرمت فایل .{ext} پشتیبانی نمی‌شود")
 
 
-# ---------- text-based formats ----------
-
 def _extract_pdf(content: bytes) -> str:
     reader = PdfReader(io.BytesIO(content))
     pages = [page.extract_text() or "" for page in reader.pages]
-    text = "\n\n".join(pages).strip()
-
-    # Scanned PDF: if extracted text is too sparse, fall back to OCR
-    page_count = max(len(reader.pages), 1)
-    if len(text) < _MIN_CHARS_PER_PAGE * page_count:
-        ocr_text = _ocr_pdf(content)
-        return ocr_text if ocr_text else text
-    return text
+    return "\n\n".join(pages).strip()
 
 
 def _extract_docx(content: bytes) -> str:
@@ -83,41 +64,3 @@ def _extract_excel(content: bytes) -> str:
 def _extract_csv(content: bytes) -> str:
     df = pd.read_csv(io.BytesIO(content), dtype=str).fillna("")
     return df.to_csv(index=False).strip()
-
-
-# ---------- OCR (Tesseract) ----------
-
-def _run_ocr(img_bytes: bytes) -> str:
-    """Run Tesseract OCR on raw image bytes; returns extracted text."""
-    try:
-        import pytesseract  # noqa: PLC0415
-        from PIL import Image as PILImage  # noqa: PLC0415
-    except ImportError as exc:
-        raise ParseError("کتابخانه pytesseract یا Pillow نصب نشده است") from exc
-
-    img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
-    return pytesseract.image_to_string(img, lang=_TESS_LANG)
-
-
-def _extract_image(content: bytes) -> str:
-    text = _run_ocr(content).strip()
-    if not text:
-        raise ParseError("متنی در تصویر شناسایی نشد")
-    return text
-
-
-def _ocr_pdf(content: bytes) -> str:
-    """Convert each page of a scanned PDF to an image and OCR it."""
-    try:
-        import fitz  # PyMuPDF  # noqa: PLC0415
-    except ImportError as exc:
-        raise ParseError("کتابخانه PyMuPDF نصب نشده است") from exc
-
-    doc = fitz.open(stream=content, filetype="pdf")
-    parts = []
-    for page in doc:
-        pix = page.get_pixmap(dpi=150)
-        page_text = _run_ocr(pix.tobytes("png")).strip()
-        if page_text:
-            parts.append(page_text)
-    return "\n\n".join(parts).strip()
