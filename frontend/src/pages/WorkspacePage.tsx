@@ -222,7 +222,7 @@ export default function WorkspacePage() {
             }`}
           >
             <IconPin />
-            گزارش‌های پین‌شده
+            پیام‌های پین‌شده
             {pins.length > 0 && (
               <span className="flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
                 {pins.length}
@@ -273,7 +273,7 @@ export default function WorkspacePage() {
             <div className="flex h-14 items-center justify-between border-b border-border px-4">
               <div className="flex items-center gap-2">
                 <IconPin className="text-amber-500" />
-                <span className="text-sm font-semibold">گزارش‌های پین‌شده</span>
+                <span className="text-sm font-semibold">پیام‌های پین‌شده</span>
               </div>
               <button
                 onClick={() => setShowPins(false)}
@@ -285,7 +285,7 @@ export default function WorkspacePage() {
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
               {pins.length === 0 && (
                 <p className="py-8 text-center text-sm text-muted-foreground">
-                  هنوز گزارشی پین نشده است.
+                  هنوز پیامی پین نشده است.
                   <br />
                   روی پیام‌های مهم دکمه 📌 را بزنید.
                 </p>
