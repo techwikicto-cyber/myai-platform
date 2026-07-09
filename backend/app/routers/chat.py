@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import get_current_user, get_workspace_membership, require_workspace_member
 from app.models.document import Document, DocumentKind
+from app.models.pinned import PinnedMessage
 from app.models.thread import Message, MessageRole, Thread
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace
-from app.schemas.thread import MessageCreate, MessageOut, ThreadCreate, ThreadOut
+from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, ThreadCreate, ThreadOut
 from app.services.chat_context import build_messages
 from app.services.db_chat import build_db_tools_and_context
 from app.services.db_query_tool import run_tool_call
@@ -223,3 +224,65 @@ async def send_message(
                     pass
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/api/messages/{message_id}/pin", response_model=PinOut, status_code=status.HTTP_201_CREATED)
+async def pin_message(
+    message_id: uuid.UUID,
+    payload: PinCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    message = await db.get(Message, message_id)
+    if not message:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="پیام پیدا نشد")
+
+    thread = await db.get(Thread, message.thread_id)
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="گفتگو پیدا نشد")
+
+    if user.role != UserRole.admin:
+        membership = await get_workspace_membership(thread.workspace_id, user, db)
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="دسترسی ندارید")
+
+    pin = PinnedMessage(
+        workspace_id=thread.workspace_id,
+        message_id=message_id,
+        user_id=user.id,
+        content_snapshot=payload.content_snapshot,
+    )
+    db.add(pin)
+    await db.commit()
+    await db.refresh(pin)
+    return pin
+
+
+@router.get("/api/workspaces/{workspace_id}/pins", response_model=list[PinOut])
+async def list_pins(
+    workspace_id: uuid.UUID,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    user, _ = membership
+    result = await db.execute(
+        select(PinnedMessage)
+        .where(PinnedMessage.workspace_id == workspace_id, PinnedMessage.user_id == user.id)
+        .order_by(PinnedMessage.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.delete("/api/pins/{pin_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_pin(
+    pin_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    pin = await db.get(PinnedMessage, pin_id)
+    if not pin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="پین پیدا نشد")
+    if pin.user_id != user.id and user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="دسترسی ندارید")
+    await db.delete(pin)
+    await db.commit()

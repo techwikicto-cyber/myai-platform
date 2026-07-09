@@ -6,6 +6,7 @@ from app.models.thread import Thread, Message, MessageRole
 from app.models.settings import ModelSettings
 from app.models.query_audit_log import QueryAuditLog, QueryAuditStatus
 from app.models.sharing import DocumentWorkspaceShare, DbConnectionWorkspaceShare
+from app.models.pinned import PinnedMessage
 
 __all__ = [
     "User",
@@ -26,4 +27,5 @@ __all__ = [
     "QueryAuditStatus",
     "DocumentWorkspaceShare",
     "DbConnectionWorkspaceShare",
+    "PinnedMessage",
 ]

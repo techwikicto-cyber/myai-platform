@@ -3,7 +3,17 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import type { ChatMessage } from '../types'
-import { IconCheckSmall, IconCopy, IconEdit, IconSparkles } from './icons'
+import {
+  IconBarChart,
+  IconCheckSmall,
+  IconCopy,
+  IconDownload,
+  IconEdit,
+  IconPin,
+  IconPinFilled,
+  IconSparkles,
+} from './icons'
+import MiniChart, { parseMarkdownTable, tableToCSV } from './MiniChart'
 
 function TypingDots() {
   return (
@@ -46,10 +56,17 @@ function CopyButton({ content, light = false }: { content: string; light?: boole
 export default function MessageBubble({
   message,
   onEdit,
+  isPinned = false,
+  onPin,
 }: {
   message: ChatMessage
   onEdit?: () => void
+  isPinned?: boolean
+  onPin?: (messageId: string, content: string) => Promise<void>
 }) {
+  const [showChart, setShowChart] = useState(false)
+  const [pinning, setPinning] = useState(false)
+
   const isUser = message.role === 'user'
 
   if (isUser) {
@@ -61,7 +78,6 @@ export default function MessageBubble({
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
             </div>
           </div>
-          {/* Action buttons — visible on hover */}
           <div className="flex items-center gap-0.5 px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             <CopyButton content={message.content} light />
             {onEdit && (
@@ -80,30 +96,94 @@ export default function MessageBubble({
   }
 
   const showTyping = message.pending && !message.content
+  const tableData = !showTyping && !message.pending ? parseMarkdownTable(message.content) : null
+  const hasTable = tableData !== null
+
+  async function handlePin() {
+    if (!onPin || !message.id || message.id.startsWith('tmp-')) return
+    setPinning(true)
+    try {
+      await onPin(message.id, message.content)
+    } finally {
+      setPinning(false)
+    }
+  }
+
+  function handleExport() {
+    if (!tableData) return
+    const csv = tableToCSV(tableData.headers, tableData.rows)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `report-${Date.now()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="animate-fade-up flex w-full justify-end">
       <div className="group flex flex-col items-end gap-0.5">
-        <div className="flex max-w-[80%] items-start gap-2.5">
+        <div className="flex max-w-[85%] items-start gap-2.5">
           <div className="rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-2.5 text-sm leading-relaxed text-foreground shadow-sm">
             {showTyping ? (
               <TypingDots />
             ) : (
-              <div className="markdown-body [&_hr]:my-3 [&_hr]:border-border">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                  {message.content}
-                </ReactMarkdown>
-              </div>
+              <>
+                <div className="markdown-body [&_hr]:my-3 [&_hr]:border-border">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+                {showChart && tableData && (
+                  <MiniChart headers={tableData.headers} rows={tableData.rows} />
+                )}
+              </>
             )}
           </div>
           <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
             <IconSparkles />
           </div>
         </div>
+
         {/* Action buttons — visible on hover, only after content arrives */}
         {!showTyping && !message.pending && (
           <div className="flex items-center gap-0.5 px-9 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             <CopyButton content={message.content} />
+
+            {hasTable && (
+              <>
+                <button
+                  onClick={handleExport}
+                  title="دانلود CSV"
+                  className="rounded-md p-1.5 text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground"
+                >
+                  <IconDownload />
+                </button>
+                <button
+                  onClick={() => setShowChart((v) => !v)}
+                  title={showChart ? 'پنهان کردن نمودار' : 'نمایش نمودار'}
+                  className={`rounded-md p-1.5 transition-all hover:bg-muted ${
+                    showChart ? 'text-primary' : 'text-muted-foreground/60 hover:text-foreground'
+                  }`}
+                >
+                  <IconBarChart />
+                </button>
+              </>
+            )}
+
+            {onPin && !message.id.startsWith('tmp-') && (
+              <button
+                onClick={handlePin}
+                disabled={pinning}
+                title={isPinned ? 'از پین خارج کن' : 'پین کن'}
+                className={`rounded-md p-1.5 transition-all hover:bg-muted disabled:opacity-50 ${
+                  isPinned ? 'text-amber-500' : 'text-muted-foreground/60 hover:text-foreground'
+                }`}
+              >
+                {isPinned ? <IconPinFilled /> : <IconPin />}
+              </button>
+            )}
           </div>
         )}
       </div>

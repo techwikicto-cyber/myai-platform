@@ -39,3 +39,11 @@ export interface ChatMessage {
   created_at?: string
   pending?: boolean
 }
+
+export interface PinDto {
+  id: string
+  message_id: string
+  workspace_id: string
+  content_snapshot: string
+  created_at: string
+}

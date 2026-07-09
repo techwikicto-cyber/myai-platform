@@ -168,3 +168,39 @@ export const IconMic = icon(
     <path d="M8 23h8" />
   </>,
 )
+
+export const IconPin = icon(
+  <>
+    <path d="M12 17v5" />
+    <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v3.76z" />
+  </>,
+)
+
+export const IconPinFilled = (props: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="size-4 shrink-0" aria-hidden {...props}>
+    <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v3.76z" />
+  </svg>
+)
+
+export const IconDownload = icon(
+  <>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="M7 10l5 5 5-5" />
+    <path d="M12 15V3" />
+  </>,
+)
+
+export const IconBarChart = icon(
+  <>
+    <rect x="18" y="3" width="4" height="18" />
+    <rect x="10" y="8" width="4" height="13" />
+    <rect x="2" y="13" width="4" height="8" />
+  </>,
+)
+
+export const IconX = icon(
+  <>
+    <path d="M18 6L6 18" />
+    <path d="M6 6l12 12" />
+  </>,
+)

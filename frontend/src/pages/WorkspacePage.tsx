@@ -1,65 +1,104 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { chatApi, streamMessage } from '../api/chat'
+import { pinsApi } from '../api/pins'
 import { workspacesApi } from '../api/workspaces'
 import MessageBubble from '../components/MessageBubble'
 import { Alert } from '../components/ui'
-import { IconChat, IconMic, IconSend, IconSettings, IconStop } from '../components/icons'
-import type { ChatMessage, Workspace } from '../types'
+import {
+  IconChat,
+  IconMic,
+  IconPin,
+  IconSend,
+  IconSettings,
+  IconStop,
+  IconX,
+} from '../components/icons'
+import { useThreadStore } from '../store/threads'
+import type { ChatMessage, PinDto, Workspace } from '../types'
 
 export default function WorkspacePage() {
-  const { workspaceId } = useParams<{ workspaceId: string }>()
+  const { workspaceId, threadId } = useParams<{ workspaceId: string; threadId?: string }>()
+  const navigate = useNavigate()
+  const threadStore = useThreadStore()
+
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
-  const [threadId, setThreadId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [pins, setPins] = useState<PinDto[]>([])
+  const [showPins, setShowPins] = useState(false)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const currentThreadTitleRef = useRef<string>('گفتگوی جدید')
 
+  const pinnedMessageIds = useMemo(() => new Set(pins.map((p) => p.message_id)), [pins])
+
+  // Load workspace info
+  useEffect(() => {
+    if (!workspaceId) return
+    workspacesApi.get(workspaceId).then(setWorkspace).catch(() => {})
+  }, [workspaceId])
+
+  // Load pins when workspace changes
+  useEffect(() => {
+    if (!workspaceId) return
+    pinsApi.list(workspaceId).then(setPins).catch(() => {})
+  }, [workspaceId])
+
+  // Load or initialize thread when workspaceId or threadId changes
   useEffect(() => {
     if (!workspaceId) return
     let cancelled = false
 
-    async function init() {
-      const ws = await workspacesApi.get(workspaceId!)
-      if (cancelled) return
-      setWorkspace(ws)
-
-      const threads = await chatApi.listThreads(workspaceId!)
-      let activeThreadId: string
-      if (threads.length > 0) {
-        activeThreadId = threads[0].id
-      } else {
-        const created = await chatApi.createThread(workspaceId!)
-        activeThreadId = created.id
+    if (!threadId) {
+      // Resolve thread and redirect
+      chatApi.listThreads(workspaceId).then(async (threads) => {
+        if (cancelled) return
+        let t
+        if (threads.length > 0) {
+          t = threads[0]
+          threadStore.setThreads(workspaceId, threads)
+        } else {
+          t = await chatApi.createThread(workspaceId)
+          if (cancelled) return
+          threadStore.setThreads(workspaceId, [t])
+        }
+        if (!cancelled) navigate(`/workspace/${workspaceId}/thread/${t.id}`, { replace: true })
+      })
+      return () => {
+        cancelled = true
       }
-      if (cancelled) return
-      setThreadId(activeThreadId)
-
-      const msgs = await chatApi.listMessages(activeThreadId)
-      if (!cancelled) setMessages(msgs)
     }
 
+    // Thread ID is known — load its messages
     setMessages([])
-    setThreadId(null)
     setError('')
-    init().catch((err) => setError(err instanceof Error ? err.message : 'خطا در بارگذاری فضای کاری'))
+    currentThreadTitleRef.current = 'گفتگوی جدید'
+
+    chatApi.listMessages(threadId).then((msgs) => {
+      if (!cancelled) {
+        setMessages(msgs)
+        // Infer current thread title
+        const threadInStore = (threadStore.threadsByWs[workspaceId] || []).find((t) => t.id === threadId)
+        if (threadInStore) currentThreadTitleRef.current = threadInStore.title
+      }
+    })
 
     return () => {
       cancelled = true
-      // Do NOT abort in-flight stream here — let it complete and save to DB.
-      // The Stop button is the explicit user action for aborting.
     }
-  }, [workspaceId])
+  }, [workspaceId, threadId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  // Auto-resize textarea as content grows
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -81,13 +120,31 @@ export default function WorkspacePage() {
 
     const controller = new AbortController()
     abortControllerRef.current = controller
+    const tmpAssistantId = assistantMsg.id
 
     try {
       await streamMessage(threadId, userText, (event) => {
         if (event.type === 'token') {
           setMessages((prev) =>
-            prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: m.content + event.content, pending: false } : m)),
+            prev.map((m) => (m.id === tmpAssistantId ? { ...m, content: m.content + event.content, pending: false } : m)),
           )
+        } else if (event.type === 'done') {
+          // Replace temp ID with real backend ID
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tmpAssistantId ? { ...m, id: event.message_id, pending: false } : m)),
+          )
+          // Update thread title in store if it was the first message
+          if (workspaceId && currentThreadTitleRef.current === 'گفتگوی جدید') {
+            const newTitle = userText.slice(0, 60)
+            currentThreadTitleRef.current = newTitle
+            threadStore.upsertThread(workspaceId, {
+              id: threadId,
+              workspace_id: workspaceId,
+              title: newTitle,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+          }
         } else if (event.type === 'error') {
           setError(event.message)
         }
@@ -100,7 +157,7 @@ export default function WorkspacePage() {
       abortControllerRef.current = null
       setSending(false)
       setMessages((prev) =>
-        prev.map((m) => (m.id === assistantMsg.id && m.pending ? { ...m, pending: false } : m)),
+        prev.map((m) => (m.id === tmpAssistantId && m.pending ? { ...m, pending: false } : m)),
       )
     }
   }
@@ -118,43 +175,116 @@ export default function WorkspacePage() {
     setTimeout(() => textareaRef.current?.focus(), 0)
   }, [])
 
+  async function handlePin(messageId: string, content: string) {
+    if (pinnedMessageIds.has(messageId)) {
+      const pin = pins.find((p) => p.message_id === messageId)
+      if (pin) {
+        await pinsApi.delete(pin.id)
+        setPins((prev) => prev.filter((p) => p.id !== pin.id))
+      }
+    } else {
+      const newPin = await pinsApi.create(messageId, content)
+      setPins((prev) => [newPin, ...prev])
+    }
+  }
+
   if (!workspaceId) return null
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
         <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
-        {workspace?.is_manager && (
-          <Link
-            to={`/workspace/${workspaceId}/settings`}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPins((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors ${
+              showPins
+                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
           >
-            <IconSettings />
-            تنظیمات فضای کاری
-          </Link>
-        )}
+            <IconPin />
+            گزارش‌های پین‌شده
+            {pins.length > 0 && (
+              <span className="flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                {pins.length}
+              </span>
+            )}
+          </button>
+          {workspace?.is_manager && (
+            <Link
+              to={`/workspace/${workspaceId}/settings`}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <IconSettings />
+              تنظیمات
+            </Link>
+          )}
+        </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
-          {messages.length === 0 && !error && (
-            <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-              <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">
-                <IconChat className="size-6" />
+      <div className="flex flex-1 overflow-hidden">
+        {/* Chat area */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
+            {messages.length === 0 && !error && (
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+                <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+                  <IconChat className="size-6" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این فضای کاری داده می‌شود.
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این فضای کاری داده می‌شود.
-              </p>
-            </div>
-          )}
-          {messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              onEdit={m.role === 'user' ? () => handleEdit(m.id, m.content) : undefined}
-            />
-          ))}
+            )}
+            {messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                onEdit={m.role === 'user' ? () => handleEdit(m.id, m.content) : undefined}
+                isPinned={pinnedMessageIds.has(m.id)}
+                onPin={m.role === 'assistant' ? handlePin : undefined}
+              />
+            ))}
+          </div>
         </div>
+
+        {/* Pins panel */}
+        {showPins && (
+          <div className="flex w-80 shrink-0 flex-col border-r border-border bg-card">
+            <div className="flex h-14 items-center justify-between border-b border-border px-4">
+              <div className="flex items-center gap-2">
+                <IconPin className="text-amber-500" />
+                <span className="text-sm font-semibold">گزارش‌های پین‌شده</span>
+              </div>
+              <button
+                onClick={() => setShowPins(false)}
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <IconX />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {pins.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  هنوز گزارشی پین نشده است.
+                  <br />
+                  روی پیام‌های مهم دکمه 📌 را بزنید.
+                </p>
+              )}
+              {pins.map((pin) => (
+                <PinCard
+                  key={pin.id}
+                  pin={pin}
+                  onUnpin={async () => {
+                    await pinsApi.delete(pin.id)
+                    setPins((prev) => prev.filter((p) => p.id !== pin.id))
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border-t border-border bg-card px-6 py-4">
@@ -180,8 +310,6 @@ export default function WorkspacePage() {
                 placeholder="پیام خود را بنویسید…"
                 className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
               />
-
-              {/* Voice — coming soon */}
               <button
                 type="button"
                 disabled
@@ -190,8 +318,6 @@ export default function WorkspacePage() {
               >
                 <IconMic />
               </button>
-
-              {/* Stop / Send */}
               {sending ? (
                 <button
                   type="button"
@@ -218,6 +344,47 @@ export default function WorkspacePage() {
             </p>
           </form>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PinCard({ pin, onUnpin }: { pin: PinDto; onUnpin: () => Promise<void> }) {
+  const [unpinning, setUnpinning] = useState(false)
+
+  async function handleUnpin() {
+    setUnpinning(true)
+    try {
+      await onUnpin()
+    } finally {
+      setUnpinning(false)
+    }
+  }
+
+  const date = new Date(pin.created_at).toLocaleDateString('fa-IR', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  return (
+    <div className="group rounded-lg border border-border bg-background p-3 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] text-muted-foreground">{date}</span>
+        <button
+          onClick={handleUnpin}
+          disabled={unpinning}
+          title="حذف پین"
+          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
+        >
+          <IconX className="size-3" />
+        </button>
+      </div>
+      <div className="markdown-body mt-1.5 max-h-48 overflow-y-auto text-xs leading-relaxed text-foreground/80">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {pin.content_snapshot.slice(0, 800) + (pin.content_snapshot.length > 800 ? '…' : '')}
+        </ReactMarkdown>
       </div>
     </div>
   )
