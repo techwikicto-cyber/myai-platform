@@ -1,35 +1,35 @@
 @import "tailwindcss";
 @import "highlight.js/styles/github.css";
 
-/* Design tokens — light content, dark emerald-tinted sidebar, emerald primary. */
+/* Design tokens — Claude-inspired light theme: warm ivory surfaces, terracotta primary. */
 @theme {
   --font-sans: "iranyekan", "Vazirmatn", -apple-system, "Segoe UI", Tahoma, sans-serif;
 
-  --color-background: oklch(0.99 0.002 160);
-  --color-foreground: oklch(0.2 0.01 165);
+  --color-background: oklch(0.984 0.004 95);
+  --color-foreground: oklch(0.25 0.008 60);
   --color-card: oklch(1 0 0);
-  --color-muted: oklch(0.96 0.006 165);
-  --color-muted-foreground: oklch(0.5 0.02 165);
-  --color-border: oklch(0.9 0.008 165);
-  --color-input: oklch(0.97 0.004 165);
+  --color-muted: oklch(0.952 0.008 92);
+  --color-muted-foreground: oklch(0.5 0.012 70);
+  --color-border: oklch(0.905 0.01 90);
+  --color-input: oklch(0.97 0.006 95);
 
-  --color-primary: oklch(0.55 0.13 162);
-  --color-primary-hover: oklch(0.5 0.13 162);
-  --color-primary-foreground: oklch(0.99 0.01 165);
-  --color-primary-soft: oklch(0.95 0.03 162);
+  --color-primary: oklch(0.64 0.115 40);
+  --color-primary-hover: oklch(0.58 0.12 40);
+  --color-primary-foreground: oklch(0.99 0.005 90);
+  --color-primary-soft: oklch(0.945 0.026 45);
 
   --color-destructive: oklch(0.55 0.2 27);
   --color-destructive-soft: oklch(0.96 0.02 27);
-  --color-success: oklch(0.55 0.13 155);
+  --color-success: oklch(0.55 0.12 150);
   --color-warning: oklch(0.65 0.15 75);
 
-  --color-sidebar: oklch(0.2 0.015 165);
-  --color-sidebar-foreground: oklch(0.92 0.01 165);
-  --color-sidebar-muted: oklch(0.65 0.015 165);
-  --color-sidebar-accent: oklch(0.27 0.02 165);
-  --color-sidebar-border: oklch(1 0 0 / 8%);
-  --color-sidebar-primary: oklch(0.78 0.14 162);
-  --color-sidebar-primary-bg: oklch(0.55 0.13 162 / 22%);
+  --color-sidebar: oklch(0.962 0.007 95);
+  --color-sidebar-foreground: oklch(0.29 0.01 60);
+  --color-sidebar-muted: oklch(0.5 0.014 70);
+  --color-sidebar-accent: oklch(0.92 0.01 90);
+  --color-sidebar-border: oklch(0.3 0.01 60 / 10%);
+  --color-sidebar-primary: oklch(0.55 0.13 40);
+  --color-sidebar-primary-bg: oklch(0.64 0.115 40 / 13%);
 
   --radius-lg: 0.625rem;
 
@@ -60,7 +60,7 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: oklch(0.75 0.01 165);
+  background-color: oklch(0.82 0.01 90);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-track {
@@ -125,7 +125,7 @@ kbd {
 .markdown-body pre {
   direction: ltr;
   text-align: left;
-  background: oklch(0.96 0.005 165);
+  background: oklch(0.965 0.006 92);
   border: 1px solid var(--color-border);
   padding: 0.75rem;
   border-radius: 0.5rem;
@@ -135,7 +135,7 @@ kbd {
 .markdown-body code {
   direction: ltr;
   unicode-bidi: embed;
-  background: oklch(0.95 0.006 165);
+  background: oklch(0.955 0.007 92);
   padding: 0.1rem 0.35rem;
   border-radius: 0.3rem;
   font-size: 0.88em;

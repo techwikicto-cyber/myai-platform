@@ -16,7 +16,7 @@ export default function AuthLayout({
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="animate-blob absolute -top-24 right-1/4 size-96 rounded-full bg-primary/15 blur-3xl" />
         <div
-          className="animate-blob absolute -bottom-32 left-1/4 size-[28rem] rounded-full bg-emerald-300/20 blur-3xl"
+          className="animate-blob absolute -bottom-32 left-1/4 size-[28rem] rounded-full bg-orange-200/25 blur-3xl"
           style={{ animationDelay: '-7s' }}
         />
       </div>

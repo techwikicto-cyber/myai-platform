@@ -135,7 +135,7 @@ export default function Sidebar() {
     )
 
   return (
-    <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-64 flex-shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-4">
         <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -276,7 +276,7 @@ export default function Sidebar() {
                             <button
                               onClick={(e) => handleDeleteThread(t.id, e)}
                               disabled={deletingThread === t.id}
-                              className="shrink-0 rounded p-0.5 text-sidebar-muted/50 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100 disabled:opacity-50"
+                              className="shrink-0 rounded p-0.5 text-sidebar-muted/50 opacity-0 transition-all hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
                               title="حذف گفتگو"
                             >
                               <IconX className="size-3" />
@@ -328,7 +328,7 @@ export default function Sidebar() {
           </div>
           <button
             onClick={logout}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-red-400"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-destructive"
             title="خروج"
           >
             <IconLogout />
