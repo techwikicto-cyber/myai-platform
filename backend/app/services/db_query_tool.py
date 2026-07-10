@@ -17,7 +17,7 @@ from app.services.query_safety import (
 settings = get_settings()
 
 TOOL_NAME = "query_database"
-MAX_RESULT_CHARS = 4000
+MAX_RESULT_CHARS = 20000
 
 # Aggregation hint: if question looks analytical but query returns too many raw rows, warn the model.
 AGGREGATION_HINT_WORDS = {"جمع", "مجموع", "میانگین", "متوسط", "تعداد", "چند", "درصد", "sum", "total", "average", "count"}
