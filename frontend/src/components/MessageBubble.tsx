@@ -81,7 +81,7 @@ export default function MessageBubble({
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
             </div>
           </div>
-          <div className="flex items-center gap-0.5 px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <div className="mt-1 flex items-center gap-0.5 px-1 text-muted-foreground/70 transition-opacity duration-150 hover:text-foreground">
             <CopyButton content={message.content} light />
             {onEdit && (
               <button
@@ -179,7 +179,7 @@ export default function MessageBubble({
 
         {/* Action buttons — visible on hover, only after content arrives */}
         {!showTyping && !message.pending && (
-          <div className="flex items-center gap-0.5 px-9 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <div className="mt-1 flex items-center gap-0.5 px-9 text-muted-foreground/70 transition-opacity duration-150">
             <CopyButton content={message.content} />
 
             {(hasTable || hasServerExport) && (
