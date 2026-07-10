@@ -36,7 +36,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthLayout title="MyAI Platform" subtitle="برای ادامه وارد حساب خود شوید">
+    <AuthLayout title="پلتفرم بینا" subtitle="برای ادامه وارد حساب خود شوید">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="ایمیل">
           <Input

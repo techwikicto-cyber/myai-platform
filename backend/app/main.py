@@ -6,7 +6,7 @@ from app.routers import auth, chat, db_connections, documents, settings as setti
 
 settings = get_settings()
 
-app = FastAPI(title="MyAI Platform")
+app = FastAPI(title="پلتفرم بینا")
 
 app.add_middleware(
     CORSMiddleware,

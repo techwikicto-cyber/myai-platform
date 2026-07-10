@@ -1,4 +1,4 @@
-# MyAI Platform — روند توسعه و تغییرات
+# پلتفرم بینا (Bina Platform) — روند توسعه و تغییرات
 
 پلتفرم چت با اسناد و دیتابیس (مشابه AnythingLLM، بدون Agent/Skill) — FastAPI + React + Postgres/pgvector — اجرا با Docker Compose.
 

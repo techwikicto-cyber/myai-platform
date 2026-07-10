@@ -3,7 +3,7 @@ export default function OwlLogo({ className }: { className?: string }) {
   return (
     <img
       src="/logo.png"
-      alt="MyAI Platform"
+      alt="پلتفرم بینا"
       className={`shrink-0 object-contain ${className ?? 'size-8'}`}
     />
   )

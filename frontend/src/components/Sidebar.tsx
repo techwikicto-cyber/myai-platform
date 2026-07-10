@@ -139,7 +139,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-4">
         <OwlLogo className="size-9 shrink-0" />
-        <span className="text-base font-bold">MyAI Platform</span>
+        <span className="text-base font-bold">پلتفرم بینا</span>
       </div>
 
       <div className="mx-4 border-t border-sidebar-border" />
