@@ -10,9 +10,9 @@ function icon(path: ReactPath) {
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="size-4 shrink-0"
         aria-hidden
         {...props}
+        className={`size-4 shrink-0 ${props.className || ''}`}
       >
         {path}
       </svg>
@@ -148,9 +148,9 @@ export const IconStop = (props: SVGProps<SVGSVGElement>) => (
   <svg
     viewBox="0 0 24 24"
     fill="currentColor"
-    className="size-4 shrink-0"
     aria-hidden
     {...props}
+    className={`size-4 shrink-0 ${props.className || ''}`}
   >
     <rect x="5" y="5" width="14" height="14" rx="2" />
   </svg>
@@ -177,7 +177,7 @@ export const IconPin = icon(
 )
 
 export const IconPinFilled = (props: SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="size-4 shrink-0" aria-hidden {...props}>
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props} className={`size-4 shrink-0 ${props.className || ''}`}>
     <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v3.76z" />
   </svg>
 )
