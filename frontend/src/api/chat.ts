@@ -21,7 +21,7 @@ export const chatApi = {
 
 export type StreamEvent =
   | { type: 'token'; content: string }
-  | { type: 'done'; message_id: string }
+  | { type: 'done'; message_id: string; export_ids?: string[] }
   | { type: 'error'; message: string }
 
 export async function streamMessage(

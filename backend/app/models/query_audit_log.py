@@ -29,6 +29,9 @@ class QueryAuditLog(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     thread_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     raw_query: Mapped[str] = mapped_column(Text, nullable=False)
     executed_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[QueryAuditStatus] = mapped_column(

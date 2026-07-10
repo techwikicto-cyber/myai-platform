@@ -2,6 +2,8 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
+import { API_BASE } from '../api/client'
+import { useAuthStore } from '../store/auth'
 import type { ChatMessage } from '../types'
 import {
   IconBarChart,
@@ -66,6 +68,7 @@ export default function MessageBubble({
 }) {
   const [showChart, setShowChart] = useState(false)
   const [pinning, setPinning] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const isUser = message.role === 'user'
 
@@ -98,6 +101,8 @@ export default function MessageBubble({
   const showTyping = message.pending && !message.content
   const tableData = !showTyping && !message.pending ? parseMarkdownTable(message.content) : null
   const hasTable = tableData !== null
+  const serverExportIds = message.export_ids || []
+  const hasServerExport = serverExportIds.length > 0
 
   async function handlePin() {
     if (!onPin || !message.id || message.id.startsWith('tmp-')) return
@@ -109,7 +114,33 @@ export default function MessageBubble({
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
+    // Server export re-runs the audited query with a high row cap — the full
+    // dataset, not just the rows that fit in the chat context window.
+    if (hasServerExport) {
+      setExporting(true)
+      try {
+        const token = useAuthStore.getState().token
+        for (const auditId of serverExportIds) {
+          const res = await fetch(`${API_BASE}/query-audits/${auditId}/export`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          })
+          if (!res.ok) continue
+          const blob = await res.blob()
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `report-${auditId.slice(0, 8)}.csv`
+          a.click()
+          URL.revokeObjectURL(url)
+        }
+      } finally {
+        setExporting(false)
+      }
+      return
+    }
+
+    // Fallback: export the markdown table rendered in this message.
     if (!tableData) return
     const csv = tableToCSV(tableData.headers, tableData.rows)
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
@@ -151,25 +182,26 @@ export default function MessageBubble({
           <div className="flex items-center gap-0.5 px-9 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             <CopyButton content={message.content} />
 
+            {(hasTable || hasServerExport) && (
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                title={hasServerExport ? 'دانلود CSV کامل (همه ردیف‌ها)' : 'دانلود CSV'}
+                className="rounded-md p-1.5 text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground disabled:opacity-50"
+              >
+                <IconDownload className={exporting ? 'animate-pulse' : undefined} />
+              </button>
+            )}
             {hasTable && (
-              <>
-                <button
-                  onClick={handleExport}
-                  title="دانلود CSV"
-                  className="rounded-md p-1.5 text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground"
-                >
-                  <IconDownload />
-                </button>
-                <button
-                  onClick={() => setShowChart((v) => !v)}
-                  title={showChart ? 'پنهان کردن نمودار' : 'نمایش نمودار'}
-                  className={`rounded-md p-1.5 transition-all hover:bg-muted ${
-                    showChart ? 'text-primary' : 'text-muted-foreground/60 hover:text-foreground'
-                  }`}
-                >
-                  <IconBarChart />
-                </button>
-              </>
+              <button
+                onClick={() => setShowChart((v) => !v)}
+                title={showChart ? 'پنهان کردن نمودار' : 'نمایش نمودار'}
+                className={`rounded-md p-1.5 transition-all hover:bg-muted ${
+                  showChart ? 'text-primary' : 'text-muted-foreground/60 hover:text-foreground'
+                }`}
+              >
+                <IconBarChart />
+              </button>
             )}
 
             {onPin && !message.id.startsWith('tmp-') && (

@@ -115,9 +115,15 @@ def format_query_result(result: QueryResult, user_question: str = "") -> str:
     table = "\n".join([header, separator, *body_lines])
 
     if len(table) > MAX_RESULT_CHARS:
-        table = table[:MAX_RESULT_CHARS] + "\n... (خروجی به دلیل حجم بالا کوتاه شد)"
+        table = table[:MAX_RESULT_CHARS] + (
+            "\n... (خروجی برای نمایش کوتاه شد — به کاربر بگو نتایج کامل را "
+            "با دکمه «دانلود CSV» زیر همین پاسخ دریافت کند)"
+        )
     if result.truncated:
-        table += f"\n\n(توجه: نتایج به {len(result.rows)} ردیف اول محدود شده است)"
+        table += (
+            f"\n\n(توجه: نمایش به {len(result.rows)} ردیف اول محدود شده است؛ "
+            "نتایج کامل با دکمه «دانلود CSV» زیر پاسخ قابل دریافت است)"
+        )
     return table
 
 
@@ -132,10 +138,10 @@ async def _write_audit_log(
     error_message: str | None,
     row_count: int | None,
     duration_ms: int | None,
-) -> None:
+) -> uuid.UUID | None:
     try:
         async with AsyncSessionLocal() as db:
-            db.add(QueryAuditLog(
+            log = QueryAuditLog(
                 workspace_id=workspace_id,
                 db_connection_id=db_connection_id,
                 user_id=user_id,
@@ -146,10 +152,12 @@ async def _write_audit_log(
                 error_message=error_message,
                 row_count=row_count,
                 duration_ms=duration_ms,
-            ))
+            )
+            db.add(log)
             await db.commit()
+            return log.id
     except Exception:  # noqa: BLE001
-        pass  # audit failure never blocks the main flow
+        return None  # audit failure never blocks the main flow
 
 
 async def run_tool_call(
@@ -158,11 +166,16 @@ async def run_tool_call(
     user_id: uuid.UUID | None = None,
     thread_id: uuid.UUID | None = None,
     user_question: str = "",
-) -> str:
+) -> tuple[str, uuid.UUID | None]:
+    """Executes one query_database tool call.
+
+    Returns (result_text_for_llm, audit_id). audit_id is set only for
+    successfully executed queries, so the caller can link it to the saved
+    assistant message and offer a full-result CSV export."""
     try:
         arguments = json.loads(arguments_json)
     except json.JSONDecodeError:
-        return "خطا: آرگومان‌های ارسال‌شده برای ابزار کوئری، JSON معتبر نیستند."
+        return "خطا: آرگومان‌های ارسال‌شده برای ابزار کوئری، JSON معتبر نیستند.", None
 
     connection_name = arguments.get("connection_name")
     query = arguments.get("query")
@@ -171,10 +184,10 @@ async def run_tool_call(
         if len(connections_by_name) == 1:
             conn = next(iter(connections_by_name.values()))
         else:
-            return f"خطا: اتصال دیتابیسی با نام «{connection_name}» پیدا نشد."
+            return f"خطا: اتصال دیتابیسی با نام «{connection_name}» پیدا نشد.", None
 
     if not query:
-        return "خطا: کوئری ارسال نشده است."
+        return "خطا: کوئری ارسال نشده است.", None
 
     raw_query = query
     parsed_query: str | dict = query
@@ -184,7 +197,7 @@ async def run_tool_call(
         try:
             parsed_query = json.loads(query)
         except json.JSONDecodeError:
-            return "خطا: برای MongoDB باید کوئری به‌صورت JSON معتبر ارسال شود."
+            return "خطا: برای MongoDB باید کوئری به‌صورت JSON معتبر ارسال شود.", None
         # Allowlist check for MongoDB collection
         try:
             if conn.allowed_tables is not None:
@@ -194,7 +207,7 @@ async def run_tool_call(
                 conn.workspace_id, conn.id, user_id, thread_id,
                 raw_query, None, QueryAuditStatus.rejected, str(exc), None, None,
             )
-            return f"خطای امنیتی: {exc}"
+            return f"خطای امنیتی: {exc}", None
     else:
         # Allowlist check for SQL tables
         try:
@@ -205,23 +218,22 @@ async def run_tool_call(
                 conn.workspace_id, conn.id, user_id, thread_id,
                 raw_query, None, QueryAuditStatus.rejected, str(exc), None, None,
             )
-            return f"خطای امنیتی: {exc}"
+            return f"خطای امنیتی: {exc}", None
 
     try:
         result = await factory.execute_query(
             conn, parsed_query, row_limit=settings.db_query_row_limit, timeout=settings.db_query_timeout_seconds
         )
         duration = int(time.time() * 1000) - start_ms
-        executed_sql = result.executed_query if hasattr(result, "executed_query") else None
-        await _write_audit_log(
+        audit_id = await _write_audit_log(
             conn.workspace_id, conn.id, user_id, thread_id,
-            raw_query, executed_sql, QueryAuditStatus.success, None, len(result.rows), duration,
+            raw_query, None, QueryAuditStatus.success, None, len(result.rows), duration,
         )
-        return format_query_result(result, user_question)
+        return format_query_result(result, user_question), audit_id
     except Exception as exc:  # noqa: BLE001
         duration = int(time.time() * 1000) - start_ms
         await _write_audit_log(
             conn.workspace_id, conn.id, user_id, thread_id,
             raw_query, None, QueryAuditStatus.error, str(exc), None, duration,
         )
-        return f"خطا در اجرای کوئری: {exc}"
+        return f"خطا در اجرای کوئری: {exc}", None

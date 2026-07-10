@@ -134,9 +134,13 @@ export default function WorkspacePage() {
             prev.map((m) => (m.id === tmpAssistantId ? { ...m, content: m.content + event.content, pending: false } : m)),
           )
         } else if (event.type === 'done') {
-          // Replace temp ID with real backend ID
+          // Replace temp ID with real backend ID and attach export links
           setMessages((prev) =>
-            prev.map((m) => (m.id === tmpAssistantId ? { ...m, id: event.message_id, pending: false } : m)),
+            prev.map((m) =>
+              m.id === tmpAssistantId
+                ? { ...m, id: event.message_id, pending: false, export_ids: event.export_ids || [] }
+                : m,
+            ),
           )
           // Update thread title in store if it was the first message
           if (workspaceId && currentThreadTitleRef.current === 'گفتگوی جدید') {

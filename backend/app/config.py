@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     upload_max_mb: int = 50
     db_query_row_limit: int = 200
     db_query_timeout_seconds: int = 15
+    db_export_row_limit: int = 10000
+    db_export_timeout_seconds: int = 60
 
 
 @lru_cache

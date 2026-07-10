@@ -29,6 +29,7 @@ class MessageOut(BaseModel):
     role: MessageRole
     content: str
     created_at: datetime
+    export_ids: list[uuid.UUID] = []
 
     model_config = {"from_attributes": True}
 

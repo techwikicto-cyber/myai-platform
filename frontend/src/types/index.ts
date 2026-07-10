@@ -38,6 +38,7 @@ export interface ChatMessage {
   content: string
   created_at?: string
   pending?: boolean
+  export_ids?: string[]
 }
 
 export interface PinDto {
