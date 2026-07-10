@@ -14,9 +14,9 @@ import {
   IconLogout,
   IconPlus,
   IconSettings,
-  IconSparkles,
   IconX,
 } from './icons'
+import OwlLogo from './Logo'
 
 const roleLabels: Record<string, string> = {
   admin: 'ادمین سیستم',
@@ -138,9 +138,7 @@ export default function Sidebar() {
     <aside className="flex h-full w-64 flex-shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-4">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <IconSparkles />
-        </div>
+        <OwlLogo className="size-9 shrink-0" />
         <span className="text-base font-bold">MyAI Platform</span>
       </div>
 

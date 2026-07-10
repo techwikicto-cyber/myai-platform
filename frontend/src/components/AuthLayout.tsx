@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconSparkles } from './icons'
+import OwlLogo from './Logo'
 
 export default function AuthLayout({
   title,
@@ -23,9 +23,7 @@ export default function AuthLayout({
 
       <div className="animate-fade-up relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
-            <IconSparkles className="size-6" />
-          </div>
+          <OwlLogo className="mb-3 size-16 shrink-0" />
           <h1 className="text-xl font-bold text-foreground">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         </div>

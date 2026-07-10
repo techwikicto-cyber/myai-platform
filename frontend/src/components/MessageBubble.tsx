@@ -13,8 +13,8 @@ import {
   IconEdit,
   IconPin,
   IconPinFilled,
-  IconSparkles,
 } from './icons'
+import OwlLogo from './Logo'
 import MiniChart, { parseMarkdownTable, tableToCSV } from './MiniChart'
 
 function TypingDots() {
@@ -172,8 +172,8 @@ export default function MessageBubble({
               </>
             )}
           </div>
-          <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
-            <IconSparkles />
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft">
+            <OwlLogo className="size-6 shrink-0" />
           </div>
         </div>
 
