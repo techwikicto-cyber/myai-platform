@@ -12,6 +12,9 @@ export default function AuthLayout({
 }) {
   return (
     <div className="relative flex h-full items-center justify-center overflow-hidden bg-muted/50 p-4">
+      {/* animated grid background */}
+      <div className="bg-grid-pattern pointer-events-none absolute inset-0" aria-hidden />
+
       {/* animated ambient blobs */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="animate-blob absolute -top-24 right-1/4 size-96 rounded-full bg-primary/15 blur-3xl" />
