@@ -187,10 +187,9 @@ export default function MessageBubble({
                 onClick={handleExport}
                 disabled={exporting}
                 title={hasServerExport ? 'دانلود CSV کامل (همه ردیف‌ها)' : 'دانلود CSV'}
-                className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-primary/80 transition-all hover:bg-muted hover:text-primary disabled:opacity-50"
+                className="rounded-md p-1.5 text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground disabled:opacity-50"
               >
                 <IconDownload className={exporting ? 'animate-pulse' : undefined} />
-                CSV
               </button>
             )}
             {hasTable && (
