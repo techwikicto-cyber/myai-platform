@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import OwlLogo from './Logo'
+import NetworkBackground from './NetworkBackground'
 
 export default function AuthLayout({
   title,
@@ -12,8 +13,7 @@ export default function AuthLayout({
 }) {
   return (
     <div className="relative flex h-full items-center justify-center overflow-hidden bg-muted/50 p-4">
-      {/* animated grid background */}
-      <div className="bg-grid-pattern pointer-events-none absolute inset-0" aria-hidden />
+      <NetworkBackground />
 
       {/* animated ambient blobs */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
