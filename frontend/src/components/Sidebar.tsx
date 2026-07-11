@@ -5,7 +5,7 @@ import { chatApi } from '../api/chat'
 import { workspacesApi } from '../api/workspaces'
 import { useAuthStore } from '../store/auth'
 import { useThreadStore } from '../store/threads'
-import type { Workspace } from '../types'
+import { useWorkspaceStore } from '../store/workspaces'
 import type { ThreadDto } from '../api/chat'
 import {
   IconChat,
@@ -25,7 +25,9 @@ const roleLabels: Record<string, string> = {
 }
 
 export default function Sidebar() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const workspaces = useWorkspaceStore((s) => s.workspaces)
+  const reloadWorkspaces = useWorkspaceStore((s) => s.reload)
+  const upsertWorkspace = useWorkspaceStore((s) => s.upsert)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [wsOpen, setWsOpen] = useState(true)
@@ -46,14 +48,9 @@ export default function Sidebar() {
 
   const threads: ThreadDto[] = activeWorkspaceId ? (threadStore.threadsByWs[activeWorkspaceId] || []) : []
 
-  async function reloadWorkspaces() {
-    const data = await workspacesApi.list()
-    setWorkspaces(data)
-  }
-
   useEffect(() => {
     reloadWorkspaces()
-  }, [])
+  }, [reloadWorkspaces])
 
   // Fetch threads when active workspace changes
   useEffect(() => {
@@ -69,7 +66,7 @@ export default function Sidebar() {
     const workspace = await workspacesApi.create(newName.trim())
     setNewName('')
     setCreating(false)
-    await reloadWorkspaces()
+    upsertWorkspace(workspace)
     navigate(`/workspace/${workspace.id}`)
   }
 

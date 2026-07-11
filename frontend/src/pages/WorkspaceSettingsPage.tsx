@@ -10,6 +10,7 @@ import { Alert, Badge, Button, Card, CardHeader, Field, Input, Spinner, Textarea
 import { IconDatabase, IconDocument, IconGlobe, IconSettings, IconTrash, IconUpload, IconUserPlus, IconUsers } from '../components/icons'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../store/auth'
+import { useWorkspaceStore } from '../store/workspaces'
 import { useNavigate } from 'react-router-dom'
 import type { AnswerMode, User, Workspace, WorkspaceMember } from '../types'
 
@@ -172,6 +173,7 @@ export default function WorkspaceSettingsPage() {
     if (!workspaceId || !workspace) return
     if (!confirm(`فضای کاری «${workspace.name}» و تمام محتوای آن (اسناد، گفتگوها، اتصال‌های دیتابیس) حذف شود؟ این عمل برگشت‌ناپذیر است.`)) return
     await workspacesApi.remove(workspaceId)
+    useWorkspaceStore.getState().remove(workspaceId)
     navigate('/')
   }
 
