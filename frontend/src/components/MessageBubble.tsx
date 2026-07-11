@@ -90,7 +90,7 @@ export default function MessageBubble({
             </div>
           </div>
           <div className="mt-1 flex items-center gap-0.5 px-1 text-muted-foreground/70 transition-opacity duration-150 hover:text-foreground">
-            <CopyButton content={message.content} label="کپی سوال" light />
+            <CopyButton content={message.content} label="کپی سوال" />
             {onEdit && (
               <button
                 onClick={onEdit}
