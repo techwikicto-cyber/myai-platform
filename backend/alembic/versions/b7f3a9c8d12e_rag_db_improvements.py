@@ -38,16 +38,12 @@ def upgrade() -> None:
     )
 
     # 3. Audit log for every DB query (success, rejected, error)
-    # Create the enum type idempotently — Postgres has no "CREATE TYPE IF NOT EXISTS",
-    # so we check pg_type first (also safe if a previous partial run already created it).
-    op.execute(
-        "DO $$ BEGIN "
-        "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'query_audit_status') THEN "
-        "CREATE TYPE query_audit_status AS ENUM ('success', 'rejected', 'error'); "
-        "END IF; "
-        "END $$;"
-    )
     if 'query_audit_logs' not in inspector.get_table_names():
+        # Drop any enum left behind by a previously failed run so create_table can create
+        # it cleanly. op.create_table emits the CREATE TYPE itself, so we must NOT pre-create
+        # it here (Postgres has no CREATE TYPE IF NOT EXISTS and a double-create errors out).
+        # Safe because the table doesn't exist yet, so nothing depends on the type.
+        op.execute("DROP TYPE IF EXISTS query_audit_status")
         op.create_table(
             'query_audit_logs',
             sa.Column('id', sa.UUID(), nullable=False),
@@ -57,7 +53,7 @@ def upgrade() -> None:
             sa.Column('thread_id', sa.UUID(), nullable=True),
             sa.Column('raw_query', sa.Text(), nullable=False),
             sa.Column('executed_query', sa.Text(), nullable=True),
-            sa.Column('status', sa.Enum('success', 'rejected', 'error', name='query_audit_status', create_type=False), nullable=False),
+            sa.Column('status', sa.Enum('success', 'rejected', 'error', name='query_audit_status'), nullable=False),
             sa.Column('error_message', sa.Text(), nullable=True),
             sa.Column('row_count', sa.Integer(), nullable=True),
             sa.Column('duration_ms', sa.Integer(), nullable=True),
