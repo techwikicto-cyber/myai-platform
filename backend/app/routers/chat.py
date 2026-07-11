@@ -187,7 +187,8 @@ async def send_message(
     if db_context:
         extra_context = f"{extra_context}\n\n{db_context}" if extra_context else db_context
 
-    # Always inject the list of ready documents so the model knows what files exist.
+    # Always tell the model exactly which real sources exist, so it never invents
+    # documents or database tables when the workspace is empty.
     doc_result = await db.execute(
         select(Document).where(
             Document.workspace_id == thread.workspace_id,
@@ -200,6 +201,14 @@ async def send_message(
         doc_list = "\n".join(f"- {d.filename}" for d in ready_docs)
         doc_index = f"فایل‌های آپلود‌شده و پردازش‌شده در این فضای کاری:\n{doc_list}"
         extra_context = f"{doc_index}\n\n{extra_context}" if extra_context else doc_index
+
+    if not ready_docs and not db_connections_by_name:
+        inventory = (
+            "در این فضای کاری هیچ سند و هیچ دیتابیسی اضافه نشده است. "
+            "اگر کاربر درباره اسناد، جداول، فیلدها یا داده‌های موجود پرسید، صریح بگو که هنوز هیچ سند یا "
+            "دیتابیسی اضافه نشده است و هرگز جدول، فیلد، سند یا داده‌ی نمونه/فرضی از خودت نساز."
+        )
+        extra_context = f"{inventory}\n\n{extra_context}" if extra_context else inventory
 
     messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
