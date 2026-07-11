@@ -39,8 +39,12 @@ def upgrade() -> None:
 
     # 3. Audit log for every DB query (success, rejected, error)
     if 'query_audit_logs' not in inspector.get_table_names():
+        # Postgres has no "CREATE TYPE IF NOT EXISTS"; guard with a DO block instead.
         op.execute(
-            "CREATE TYPE IF NOT EXISTS query_audit_status AS ENUM ('success', 'rejected', 'error')"
+            "DO $$ BEGIN "
+            "CREATE TYPE query_audit_status AS ENUM ('success', 'rejected', 'error'); "
+            "EXCEPTION WHEN duplicate_object THEN null; "
+            "END $$;"
         )
         op.create_table(
             'query_audit_logs',
