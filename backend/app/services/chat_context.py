@@ -1,8 +1,17 @@
+from datetime import datetime
+
 import jdatetime
 
 from app.models.thread import Message, MessageRole
 from app.models.workspace import Workspace
 from app.services.tokens import count_tokens
+
+try:
+    from zoneinfo import ZoneInfo
+
+    _TEHRAN_TZ = ZoneInfo("Asia/Tehran")
+except Exception:  # noqa: BLE001 — tz database unavailable; fall back to system local time
+    _TEHRAN_TZ = None
 
 MAX_HISTORY_TOKENS = 6000
 
@@ -17,9 +26,12 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 def _current_jalali_date_str() -> str:
+    """Returns the current Jalali date with weekday name, computed in Tehran time
+    so the day never drifts near UTC midnight for Iranian users."""
     jdatetime.set_locale("fa_IR")
-    today = jdatetime.date.today()
-    return today.strftime("%d %B %Y")
+    now = datetime.now(_TEHRAN_TZ) if _TEHRAN_TZ else datetime.now()
+    today = jdatetime.datetime.fromgregorian(datetime=now)
+    return today.strftime("%A %d %B %Y")  # e.g. «شنبه ۲۰ تیر ۱۴۰۵»
 
 
 def build_messages(
@@ -33,8 +45,9 @@ def build_messages(
     jalali_date = _current_jalali_date_str()
     system_prompt = (
         f"{system_prompt}\n\n"
-        f"تاریخ امروز: {jalali_date} (شمسی). "
-        "در پاسخ به سوالات تاریخ‌دار، تاریخ شمسی را ملاک قرار بده."
+        f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. "
+        "این تاریخ و روز هفته دقیق و معتبر است؛ هرگز روز هفته را خودت حدس نزن و "
+        "فقط از همین مقدار استفاده کن. در پاسخ به سوالات تاریخ‌دار، تاریخ شمسی را ملاک قرار بده."
     )
     if extra_context:
         system_prompt = f"{system_prompt}\n\nمنابع مرتبط:\n{extra_context}"
