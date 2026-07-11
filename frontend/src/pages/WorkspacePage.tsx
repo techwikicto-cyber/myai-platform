@@ -21,6 +21,7 @@ import {
   IconX,
 } from '../components/icons'
 import { parseMarkdownTable, tableToCSV } from '../components/MiniChart'
+import { copyText } from '../lib/clipboard'
 import { useThreadStore } from '../store/threads'
 import type { ChatMessage, PinDto, Workspace } from '../types'
 
@@ -401,32 +402,23 @@ function PinCard({
     const fullText = pin.question_snapshot
       ? `سوال:\n${pin.question_snapshot}\n\nپاسخ:\n${pin.content_snapshot}`
       : pin.content_snapshot
-    try {
-      await navigator.clipboard.writeText(fullText)
+    if (await copyText(fullText)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      /* clipboard API unavailable */
     }
   }
 
   async function handleCopyQuestion() {
-    try {
-      await navigator.clipboard.writeText(pin.question_snapshot)
+    if (await copyText(pin.question_snapshot)) {
       setQuestionCopied(true)
       setTimeout(() => setQuestionCopied(false), 2000)
-    } catch {
-      /* clipboard API unavailable */
     }
   }
 
   async function handleCopyAnswer() {
-    try {
-      await navigator.clipboard.writeText(pin.content_snapshot)
+    if (await copyText(pin.content_snapshot)) {
       setAnswerCopied(true)
       setTimeout(() => setAnswerCopied(false), 2000)
-    } catch {
-      /* clipboard API unavailable */
     }
   }
 

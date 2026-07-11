@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { API_BASE } from '../api/client'
+import { copyText } from '../lib/clipboard'
 import { useAuthStore } from '../store/auth'
 import type { ChatMessage } from '../types'
 import {
@@ -39,12 +40,9 @@ function CopyButton({
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(content)
+    if (await copyText(content)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      /* clipboard API unavailable */
     }
   }
 
