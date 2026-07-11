@@ -384,6 +384,7 @@ function PinCard({
   const [unpinning, setUnpinning] = useState(false)
   const [copied, setCopied] = useState(false)
   const [questionCopied, setQuestionCopied] = useState(false)
+  const [answerCopied, setAnswerCopied] = useState(false)
 
   const tableData = useMemo(() => parseMarkdownTable(pin.content_snapshot), [pin.content_snapshot])
 
@@ -414,6 +415,16 @@ function PinCard({
       await navigator.clipboard.writeText(pin.question_snapshot)
       setQuestionCopied(true)
       setTimeout(() => setQuestionCopied(false), 2000)
+    } catch {
+      /* clipboard API unavailable */
+    }
+  }
+
+  async function handleCopyAnswer() {
+    try {
+      await navigator.clipboard.writeText(pin.content_snapshot)
+      setAnswerCopied(true)
+      setTimeout(() => setAnswerCopied(false), 2000)
     } catch {
       /* clipboard API unavailable */
     }
@@ -499,10 +510,24 @@ function PinCard({
         </div>
       )}
 
-      <div className="markdown-body mt-1.5 max-h-48 overflow-y-auto text-xs leading-relaxed text-foreground/80">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {pin.content_snapshot.slice(0, 800) + (pin.content_snapshot.length > 800 ? '…' : '')}
-        </ReactMarkdown>
+      <div className="group/a mt-1.5">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[11px] font-medium text-foreground/90">پاسخ:</span>
+          <button
+            onClick={handleCopyAnswer}
+            title={answerCopied ? 'کپی شد!' : 'کپی پاسخ'}
+            className={`rounded p-0.5 opacity-0 transition-all hover:bg-muted group-hover/a:opacity-100 ${
+              answerCopied ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {answerCopied ? <IconCheckSmall className="size-3" /> : <IconCopy className="size-3" />}
+          </button>
+        </div>
+        <div className="markdown-body max-h-48 overflow-y-auto text-xs leading-relaxed text-foreground/80">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {pin.content_snapshot.slice(0, 800) + (pin.content_snapshot.length > 800 ? '…' : '')}
+          </ReactMarkdown>
+        </div>
       </div>
     </div>
   )

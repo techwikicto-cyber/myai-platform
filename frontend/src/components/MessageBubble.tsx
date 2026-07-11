@@ -27,7 +27,15 @@ function TypingDots() {
   )
 }
 
-function CopyButton({ content, light = false }: { content: string; light?: boolean }) {
+function CopyButton({
+  content,
+  label = 'کپی متن',
+  light = false,
+}: {
+  content: string
+  label?: string
+  light?: boolean
+}) {
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
@@ -43,7 +51,7 @@ function CopyButton({ content, light = false }: { content: string; light?: boole
   return (
     <button
       onClick={handleCopy}
-      title={copied ? 'کپی شد!' : 'کپی متن'}
+      title={copied ? 'کپی شد!' : label}
       className={`rounded-md p-1.5 transition-all ${
         light
           ? 'text-primary-foreground/60 hover:text-primary-foreground'
@@ -82,7 +90,7 @@ export default function MessageBubble({
             </div>
           </div>
           <div className="mt-1 flex items-center gap-0.5 px-1 text-muted-foreground/70 transition-opacity duration-150 hover:text-foreground">
-            <CopyButton content={message.content} light />
+            <CopyButton content={message.content} label="کپی سوال" light />
             {onEdit && (
               <button
                 onClick={onEdit}
@@ -180,7 +188,7 @@ export default function MessageBubble({
         {/* Action buttons — visible on hover, only after content arrives */}
         {!showTyping && !message.pending && (
           <div className="mt-1 flex items-center gap-0.5 px-9 text-muted-foreground/70 transition-opacity duration-150">
-            <CopyButton content={message.content} />
+            <CopyButton content={message.content} label="کپی پاسخ" />
 
             {(hasTable || hasServerExport) && (
               <button
