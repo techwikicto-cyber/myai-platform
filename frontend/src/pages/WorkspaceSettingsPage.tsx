@@ -11,7 +11,7 @@ import { IconDatabase, IconDocument, IconGlobe, IconSettings, IconTrash, IconUpl
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useNavigate } from 'react-router-dom'
-import type { User, Workspace, WorkspaceMember } from '../types'
+import type { AnswerMode, User, Workspace, WorkspaceMember } from '../types'
 
 const statusBadge: Record<string, { kind: 'success' | 'error' | 'warning' | 'muted'; label: string }> = {
   pending: { kind: 'muted', label: 'در صف' },
@@ -61,6 +61,7 @@ export default function WorkspaceSettingsPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [name, setName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [answerMode, setAnswerMode] = useState<AnswerMode>('strict')
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
   const [documents, setDocuments] = useState<DocumentDto[]>([])
@@ -102,6 +103,7 @@ export default function WorkspaceSettingsPage() {
       setWorkspace(ws)
       setName(ws.name)
       setSystemPrompt(ws.system_prompt || '')
+      setAnswerMode(ws.answer_mode || 'strict')
     })
     reloadDocuments()
     reloadMembers()
@@ -125,7 +127,7 @@ export default function WorkspaceSettingsPage() {
     setSaving(true)
     setSavedMsg('')
     try {
-      await workspacesApi.update(workspaceId, { name, system_prompt: systemPrompt })
+      await workspacesApi.update(workspaceId, { name, system_prompt: systemPrompt, answer_mode: answerMode })
       setSavedMsg('ذخیره شد')
       setTimeout(() => setSavedMsg(''), 3000)
     } finally {
@@ -262,6 +264,64 @@ export default function WorkspaceSettingsPage() {
                   className="resize-none"
                 />
               </Field>
+
+              <Field
+                label="حالت پاسخ‌دهی"
+                hint="تعیین می‌کند دستیار فقط بر اساس اسناد و داده‌های این فضای کاری پاسخ دهد یا به سوالات عمومی هم پاسخ دهد"
+              >
+                <div className="space-y-2">
+                  <label
+                    className={clsx(
+                      'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                      answerMode === 'strict'
+                        ? 'border-primary bg-primary-soft/50'
+                        : 'border-border hover:bg-muted/50',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="answer_mode"
+                      value="strict"
+                      checked={answerMode === 'strict'}
+                      onChange={() => setAnswerMode('strict')}
+                      className="mt-1 accent-[var(--color-primary)]"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">سخت‌گیرانه (فقط مستندات)</p>
+                      <p className="text-xs text-muted-foreground">
+                        دستیار فقط بر اساس اسناد و داده‌های این فضای کاری پاسخ می‌دهد و به سوالات عمومی
+                        پاسخ نمی‌دهد. مناسب موارد حساس و انطباق‌محور.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={clsx(
+                      'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                      answerMode === 'open'
+                        ? 'border-primary bg-primary-soft/50'
+                        : 'border-border hover:bg-muted/50',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="answer_mode"
+                      value="open"
+                      checked={answerMode === 'open'}
+                      onChange={() => setAnswerMode('open')}
+                      className="mt-1 accent-[var(--color-primary)]"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">باز (مستندات + دانش عمومی)</p>
+                      <p className="text-xs text-muted-foreground">
+                        برای سوالات مربوط به داده‌ها از اسناد استفاده می‌کند و به سوالات عمومی هم از دانش
+                        خود پاسخ می‌دهد. روی اعداد و داده‌ها همچنان سخت‌گیر می‌ماند.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </Field>
+
               <div className="flex items-center gap-3">
                 <Button type="submit" disabled={saving}>
                   {saving && <Spinner />}

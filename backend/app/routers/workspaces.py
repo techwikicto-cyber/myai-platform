@@ -94,6 +94,8 @@ async def update_workspace(
         workspace.name = payload.name
     if payload.system_prompt is not None:
         workspace.system_prompt = payload.system_prompt
+    if payload.answer_mode is not None:
+        workspace.answer_mode = payload.answer_mode
     await db.commit()
     await db.refresh(workspace)
     return WorkspaceOut.model_validate(workspace).model_copy(update={"is_manager": True})

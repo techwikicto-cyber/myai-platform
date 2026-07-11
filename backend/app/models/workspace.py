@@ -15,6 +15,8 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # "strict" = answer only from workspace docs/DB; "open" = also answer general questions.
+    answer_mode: Mapped[str] = mapped_column(String(16), nullable=False, server_default="strict", default="strict")
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

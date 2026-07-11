@@ -7,11 +7,14 @@ export interface User {
   is_active: boolean
 }
 
+export type AnswerMode = 'strict' | 'open'
+
 export interface Workspace {
   id: string
   name: string
   slug: string
   system_prompt: string | null
+  answer_mode: AnswerMode
   created_at: string
   is_manager: boolean
 }

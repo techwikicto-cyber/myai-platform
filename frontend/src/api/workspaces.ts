@@ -1,11 +1,11 @@
 import { api } from './client'
-import type { Workspace, WorkspaceMember } from '../types'
+import type { AnswerMode, Workspace, WorkspaceMember } from '../types'
 
 export const workspacesApi = {
   list: () => api.get<Workspace[]>('/workspaces'),
   create: (name: string) => api.post<Workspace>('/workspaces', { name }),
   get: (id: string) => api.get<Workspace>(`/workspaces/${id}`),
-  update: (id: string, payload: { name?: string; system_prompt?: string }) =>
+  update: (id: string, payload: { name?: string; system_prompt?: string; answer_mode?: AnswerMode }) =>
     api.patch<Workspace>(`/workspaces/${id}`, payload),
   remove: (id: string) => api.delete<void>(`/workspaces/${id}`),
   members: (id: string) => api.get<WorkspaceMember[]>(`/workspaces/${id}/members`),
