@@ -38,14 +38,16 @@ def upgrade() -> None:
     )
 
     # 3. Audit log for every DB query (success, rejected, error)
+    # Create the enum type idempotently — Postgres has no "CREATE TYPE IF NOT EXISTS",
+    # so we check pg_type first (also safe if a previous partial run already created it).
+    op.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'query_audit_status') THEN "
+        "CREATE TYPE query_audit_status AS ENUM ('success', 'rejected', 'error'); "
+        "END IF; "
+        "END $$;"
+    )
     if 'query_audit_logs' not in inspector.get_table_names():
-        # Postgres has no "CREATE TYPE IF NOT EXISTS"; guard with a DO block instead.
-        op.execute(
-            "DO $$ BEGIN "
-            "CREATE TYPE query_audit_status AS ENUM ('success', 'rejected', 'error'); "
-            "EXCEPTION WHEN duplicate_object THEN null; "
-            "END $$;"
-        )
         op.create_table(
             'query_audit_logs',
             sa.Column('id', sa.UUID(), nullable=False),
