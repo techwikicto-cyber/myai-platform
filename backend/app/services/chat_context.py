@@ -55,6 +55,13 @@ def _current_jalali_date_str() -> str:
     return today.strftime("%A %d %B %Y")  # e.g. «شنبه ۲۰ تیر ۱۴۰۵»
 
 
+CORE_SYSTEM_RULES = (
+    "قوانین اصلی و غیرقابل تخطی دیتابیس:\n"
+    "- هرگز جدول، فیلد، ستون، سند، فایل یا داده‌ای که به‌صراحت در منابع نیامده را از خودت نساز و حدس نزن.\n"
+    "- هرگز محاسبات عددی (جمع، میانگین، درصد، شمارش) را خودت روی ردیف‌های جدول انجام نده؛ همیشه از کوئری (SUM/AVG/COUNT/GROUP BY) برای محاسبه استفاده کن و فقط عدد نهایی را بخوان.\n"
+    "- برای پاسخ به هر سوال درباره آمار و ارقام دیتابیس، همیشه از ابزار query_database استفاده کن و از دانش قبلی یا حدسیات جواب نده."
+)
+
 def build_messages(
     workspace: Workspace,
     history: list[Message],
@@ -62,19 +69,26 @@ def build_messages(
     extra_context: str | None,
     new_user_message: str,
 ) -> list[dict]:
-    system_prompt = workspace.system_prompt or DEFAULT_SYSTEM_PROMPT
+    # Determine user-defined vs default persona
+    persona_prompt = workspace.system_prompt.strip() if workspace.system_prompt else DEFAULT_SYSTEM_PROMPT
+    
     grounding = OPEN_GROUNDING if getattr(workspace, "answer_mode", "strict") == "open" else STRICT_GROUNDING
     jalali_date = _current_jalali_date_str()
+    
+    # Build a robust system prompt: Core Rules + Grounding + Date -> Then Custom Persona at the very end
     system_prompt = (
-        f"{system_prompt}\n\n{grounding}\n\n"
-        f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. "
-        "این تاریخ و روز هفته دقیق و معتبر است؛ هرگز روز هفته را خودت حدس نزن و "
-        "فقط از همین مقدار استفاده کن. در پاسخ به سوالات تاریخ‌دار، تاریخ شمسی را ملاک قرار بده."
+        f"{CORE_SYSTEM_RULES}\n\n"
+        f"{grounding}\n\n"
+        f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. هرگز روز هفته را حدس نزن.\n\n"
     )
+    
     if extra_context:
-        system_prompt = f"{system_prompt}\n\nمنابع مرتبط:\n{extra_context}"
+        system_prompt += f"منابع مرتبط:\n{extra_context}\n\n"
     if memory_summary:
-        system_prompt = f"{system_prompt}\n\nخلاصه مکالمات قبلی:\n{memory_summary}"
+        system_prompt += f"خلاصه مکالمات قبلی:\n{memory_summary}\n\n"
+
+    # Put the user's explicit persona/instructions at the absolute end so the LLM respects it most.
+    system_prompt += f"--- دستورالعمل اصلی و شخصیت شما (System Prompt) ---\n{persona_prompt}"
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
 

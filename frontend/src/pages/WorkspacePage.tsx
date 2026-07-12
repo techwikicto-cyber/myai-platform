@@ -23,6 +23,7 @@ import {
 import { parseMarkdownTable, tableToCSV } from '../components/MiniChart'
 import { copyText } from '../lib/clipboard'
 import { useThreadStore } from '../store/threads'
+import { useChatStore } from '../store/chat'
 import type { ChatMessage, PinDto, Workspace } from '../types'
 
 export default function WorkspacePage() {
@@ -30,11 +31,16 @@ export default function WorkspacePage() {
   const navigate = useNavigate()
   const threadStore = useThreadStore()
 
+  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, setMessages, setInput, setSending, setError } = useChatStore()
+  
+  const messages = threadId ? (msgsMap[threadId] || []) : []
+  const input = threadId ? (inpsMap[threadId] || '') : ''
+  const sending = threadId ? (sendMap[threadId] || false) : false
+  const error = threadId ? (errMap[threadId] || '') : ''
+
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState('')
+  const [pins, setPins] = useState<PinDto[]>([])
+  const [showPins, setShowPins] = useState(false)
   const [pins, setPins] = useState<PinDto[]>([])
   const [showPins, setShowPins] = useState(false)
 
@@ -82,19 +88,23 @@ export default function WorkspacePage() {
       }
     }
 
-    // Thread ID is known — load its messages
-    setMessages([])
-    setError('')
+    // Thread ID is known — load its messages if we haven't already
     currentThreadTitleRef.current = 'گفتگوی جدید'
-
-    chatApi.listMessages(threadId).then((msgs) => {
-      if (!cancelled) {
-        setMessages(msgs)
-        // Infer current thread title
-        const threadInStore = (threadStore.threadsByWs[workspaceId] || []).find((t) => t.id === threadId)
-        if (threadInStore) currentThreadTitleRef.current = threadInStore.title
-      }
-    })
+    
+    // Only fetch if we have no messages in the global store, meaning it's a fresh load
+    if (!msgsMap[threadId]) {
+      chatApi.listMessages(threadId).then((msgs) => {
+        if (!cancelled) {
+          setMessages(threadId, msgs)
+          // Infer current thread title
+          const threadInStore = (threadStore.threadsByWs[workspaceId] || []).find((t) => t.id === threadId)
+          if (threadInStore) currentThreadTitleRef.current = threadInStore.title
+        }
+      })
+    } else {
+      const threadInStore = (threadStore.threadsByWs[workspaceId] || []).find((t) => t.id === threadId)
+      if (threadInStore) currentThreadTitleRef.current = threadInStore.title
+    }
 
     return () => {
       cancelled = true
@@ -115,28 +125,32 @@ export default function WorkspacePage() {
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault()
     if (!input.trim() || !threadId || sending) return
-    setError('')
+    setError(threadId, '')
     const userText = input.trim()
-    setInput('')
-    setSending(true)
+    setInput(threadId, '')
+    setSending(threadId, true)
 
     const userMsg: ChatMessage = { id: `tmp-user-${Date.now()}`, role: 'user', content: userText }
     const assistantMsg: ChatMessage = { id: `tmp-assistant-${Date.now()}`, role: 'assistant', content: '', pending: true }
-    setMessages((prev) => [...prev, userMsg, assistantMsg])
+    setMessages(threadId, (prev) => [...prev, userMsg, assistantMsg])
 
     const controller = new AbortController()
     abortControllerRef.current = controller
     const tmpAssistantId = assistantMsg.id
 
+    // Use a captured reference to threadId so that if the component unmounts,
+    // the callback still knows which thread to update in the global store.
+    const currentThreadId = threadId
+
     try {
-      await streamMessage(threadId, userText, (event) => {
+      await streamMessage(currentThreadId, userText, (event) => {
         if (event.type === 'token') {
-          setMessages((prev) =>
+          setMessages(currentThreadId, (prev) =>
             prev.map((m) => (m.id === tmpAssistantId ? { ...m, content: m.content + event.content, pending: false } : m)),
           )
         } else if (event.type === 'done') {
           // Replace temp ID with real backend ID and attach export links
-          setMessages((prev) =>
+          setMessages(currentThreadId, (prev) =>
             prev.map((m) =>
               m.id === tmpAssistantId
                 ? { ...m, id: event.message_id, pending: false, export_ids: event.export_ids || [] }
@@ -156,17 +170,17 @@ export default function WorkspacePage() {
             })
           }
         } else if (event.type === 'error') {
-          setError(event.message)
+          setError(currentThreadId, event.message)
         }
       }, controller.signal)
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
-        setError(err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
+        setError(currentThreadId, err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
       }
     } finally {
       abortControllerRef.current = null
-      setSending(false)
-      setMessages((prev) =>
+      setSending(currentThreadId, false)
+      setMessages(currentThreadId, (prev) =>
         prev.map((m) => (m.id === tmpAssistantId && m.pending ? { ...m, pending: false } : m)),
       )
     }
@@ -177,13 +191,14 @@ export default function WorkspacePage() {
   }
 
   const handleEdit = useCallback((msgId: string, content: string) => {
-    setMessages((prev) => {
+    if (!threadId) return
+    setMessages(threadId, (prev) => {
       const idx = prev.findIndex((m) => m.id === msgId)
       return idx === -1 ? prev : prev.slice(0, idx)
     })
-    setInput(content)
+    setInput(threadId, content)
     setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [])
+  }, [threadId, setMessages, setInput])
 
   async function handlePin(messageId: string, content: string) {
     if (pinnedMessageIds.has(messageId)) {
@@ -207,8 +222,10 @@ export default function WorkspacePage() {
   }
 
   function handleAskAgain(question: string) {
-    setInput(question)
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    if (threadId) {
+      setInput(threadId, question)
+      setTimeout(() => textareaRef.current?.focus(), 0)
+    }
   }
 
   if (!workspaceId) return null
@@ -323,7 +340,7 @@ export default function WorkspacePage() {
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => threadId && setInput(threadId, e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
