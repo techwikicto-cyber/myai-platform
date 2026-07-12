@@ -41,8 +41,6 @@ export default function WorkspacePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [pins, setPins] = useState<PinDto[]>([])
   const [showPins, setShowPins] = useState(false)
-  const [pins, setPins] = useState<PinDto[]>([])
-  const [showPins, setShowPins] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
