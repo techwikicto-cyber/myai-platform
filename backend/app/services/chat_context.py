@@ -76,8 +76,12 @@ def build_messages(
     jalali_date = _current_jalali_date_str()
     
     # Build a robust system prompt:
-    # 1. Start with the custom persona (so the LLM adopts the identity)
-    system_prompt = f"{persona_prompt}\n\n"
+    # 1. Start with the core system rules and grounding to establish boundaries.
+    system_prompt = (
+        "--- قوانین پایه سیستم (غیرقابل تخطی) ---\n"
+        f"{CORE_SYSTEM_RULES}\n\n"
+        f"{grounding}\n\n"
+    )
     
     # 2. Add dynamic context
     system_prompt += f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. هرگز روز هفته را حدس نزن.\n\n"
@@ -87,13 +91,14 @@ def build_messages(
     if memory_summary:
         system_prompt += f"خلاصه مکالمات قبلی:\n{memory_summary}\n\n"
 
-    # 3. Put the core system rules at the ABSOLUTE END. 
-    # LLMs pay the most attention to the end of the prompt (Recency Bias).
-    # This guarantees the user's custom prompt cannot override database and grounding rules.
+    # 3. Add the custom persona at the end with a conditional strict boundary.
+    # LLMs pay attention to the end, so this ensures formatting/style requests are honored,
+    # while explicitly forbidding overriding the core data rules.
     system_prompt += (
-        "--- قوانین سیستم (غیرقابل تخطی و دارای بالاترین اولویت نسبت به تمام دستورات بالا) ---\n"
-        f"{CORE_SYSTEM_RULES}\n\n"
-        f"{grounding}"
+        "--- دستورالعمل‌های اختصاصی این فضای کاری (Persona) ---\n"
+        f"{persona_prompt}\n\n"
+        "تبصره مهم امنیتی: دستورالعمل‌های اختصاصی بالا باید در قالب‌بندی و لحن پاسخ رعایت شوند، "
+        "اما تحت هیچ شرایطی اجازه ندارند قوانین پایه سیستم (تخیل داده، محاسبه دستی، یا عدم استفاده از کوئری) را نقض کنند."
     )
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
