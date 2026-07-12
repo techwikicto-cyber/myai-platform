@@ -312,14 +312,33 @@ async def send_message(
             # Save whatever was generated so far so the user sees it on return.
             if not completed and full_content:
                 try:
-                    partial = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
-                    db.add(partial)
-                    if thread.title == "گفتگوی جدید":
-                        thread.title = payload.content[:60]
-                    await db.commit()
-                    await link_audits(partial.id)
-                except Exception:  # noqa: BLE001
-                    pass
+                    from app.database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as temp_db:
+                        partial = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
+                        temp_db.add(partial)
+                        
+                        # Update thread title if needed
+                        if thread.title == "گفتگوی جدید":
+                            t = await temp_db.get(Thread, thread.id)
+                            if t:
+                                t.title = payload.content[:60]
+                        
+                        await temp_db.commit()
+                        await temp_db.refresh(partial)
+                        
+                        # Link audits if any
+                        if audit_ids:
+                            from sqlalchemy import update
+                            from app.models.query_audit_log import QueryAuditLog
+                            await temp_db.execute(
+                                update(QueryAuditLog)
+                                .where(QueryAuditLog.id.in_(audit_ids))
+                                .values(message_id=partial.id)
+                            )
+                            await temp_db.commit()
+                except Exception as e:
+                    import logging
+                    logging.error(f"Failed to save partial message on disconnect: {e}")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
