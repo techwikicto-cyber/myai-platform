@@ -92,7 +92,7 @@ async def introspect_schema(engine: DbEngine, params: ConnectionParams, timeout:
 def _execute_query_sync(
     conn_id: str, engine: DbEngine, params: ConnectionParams, sql: str, row_limit: int, timeout: int
 ) -> QueryResult:
-    safe_sql = ensure_readonly_sql(sql, row_limit)
+    safe_sql = ensure_readonly_sql(sql, row_limit, engine=engine.value)
     eng = engine_cache.get_or_create(conn_id, lambda: _build_engine(engine, params, timeout))
     with eng.connect() as conn:
         result = conn.execute(text(safe_sql))

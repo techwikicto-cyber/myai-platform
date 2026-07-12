@@ -75,17 +75,35 @@ def _execute_query_sync(
         db = client[params.database]
         collection = db[payload["collection"]]
 
+        truncated = False
         if operation == "find":
             cursor = collection.find(
                 payload.get("filter") or {}, payload.get("projection") or None
-            ).limit(row_limit).max_time_ms(timeout * 1000)
+            )
+            if payload.get("sort"):
+                cursor = cursor.sort(list(payload["sort"].items()))
+            # Honour the model's limit but cap it at row_limit
+            model_limit = payload.get("limit")
+            effective_limit = min(int(model_limit), row_limit) if model_limit else row_limit
+            cursor = cursor.limit(effective_limit).max_time_ms(timeout * 1000)
             docs = [_jsonable(d) for d in cursor]
+            truncated = len(docs) == effective_limit
         else:  # aggregate
-            pipeline = list(payload.get("pipeline") or []) + [{"$limit": row_limit}]
+            pipeline = list(payload.get("pipeline") or [])
+            # Only inject a $limit guard if the pipeline has no $limit stage yet
+            has_limit = any("$limit" in stage for stage in pipeline)
+            if not has_limit:
+                pipeline = pipeline + [{"$limit": row_limit}]
+            else:
+                # Cap any existing $limit values to row_limit
+                pipeline = [
+                    {"$limit": min(stage["$limit"], row_limit)} if "$limit" in stage else stage
+                    for stage in pipeline
+                ]
             docs = [_jsonable(d) for d in collection.aggregate(pipeline, maxTimeMS=timeout * 1000)]
 
         columns = sorted({k for d in docs for k in d.keys()})
-        return QueryResult(columns=columns, rows=docs, truncated=len(docs) == row_limit)
+        return QueryResult(columns=columns, rows=docs, truncated=truncated)
     finally:
         client.close()
 

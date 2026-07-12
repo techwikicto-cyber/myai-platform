@@ -25,9 +25,9 @@ class QuerySafetyError(Exception):
     pass
 
 
-def ensure_readonly_sql(sql: str, default_row_limit: int) -> str:
-    """Validates the SQL is a single read-only SELECT statement and ensures a LIMIT clause,
-    so LLM-generated queries can never mutate or exfiltrate more than the configured cap."""
+def ensure_readonly_sql(sql: str, default_row_limit: int, engine: str = "") -> str:
+    """Validates the SQL is a single read-only SELECT statement and ensures a row-limit clause,
+    using the correct syntax for the target database engine."""
     cleaned = sql.strip().rstrip(";")
     if not cleaned:
         raise QuerySafetyError("کوئری خالی است")
@@ -47,9 +47,30 @@ def ensure_readonly_sql(sql: str, default_row_limit: int) -> str:
         if token.ttype in (Keyword, DML) and token.value.upper() in FORBIDDEN_KEYWORDS:
             raise QuerySafetyError(f"استفاده از دستور «{token.value.upper()}» مجاز نیست")
 
-    if " LIMIT " not in f" {upper_sql} " and not upper_sql.rstrip().endswith("LIMIT"):
-        if "TOP " in upper_sql.split("SELECT", 1)[-1][:20]:
-            return cleaned  # MSSQL-style TOP already caps rows
+    engine_lower = engine.lower()
+
+    # MSSQL: already capped with TOP — no further action needed
+    if "TOP " in upper_sql.split("SELECT", 1)[-1][:30]:
+        return cleaned
+
+    # Oracle: already capped with FETCH FIRST — no further action needed
+    if "FETCH FIRST" in upper_sql or "FETCH NEXT" in upper_sql:
+        return cleaned
+
+    # Oracle: use FETCH FIRST ... ROWS ONLY
+    if engine_lower == "oracle":
+        if " LIMIT " not in f" {upper_sql} ":
+            cleaned = f"{cleaned} FETCH FIRST {default_row_limit} ROWS ONLY"
+        return cleaned
+
+    # MSSQL without TOP: use OFFSET/FETCH (safer than LIMIT)
+    if engine_lower == "mssql":
+        if " LIMIT " not in f" {upper_sql} " and "OFFSET" not in upper_sql:
+            cleaned = f"{cleaned} OFFSET 0 ROWS FETCH NEXT {default_row_limit} ROWS ONLY"
+        return cleaned
+
+    # PostgreSQL / MySQL / SQLite: use LIMIT
+    if " LIMIT " not in f" {upper_sql} ":
         cleaned = f"{cleaned} LIMIT {default_row_limit}"
 
     return cleaned

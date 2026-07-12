@@ -101,14 +101,6 @@ def format_query_result(result: QueryResult, user_question: str = "") -> str:
     if not result.rows:
         return "کوئری اجرا شد اما هیچ ردیفی برنگشت."
 
-    # Aggregation check: warn if too many raw rows returned for an analytical question
-    if len(result.rows) > 20 and any(w in user_question for w in AGGREGATION_HINT_WORDS):
-        return (
-            f"(هشدار: کوئری {len(result.rows)} ردیف خام برگرداند. "
-            "برای سوالات آماری/محاسباتی، لطفاً کوئری را با SUM/AVG/COUNT/GROUP BY بازنویسی کن "
-            "تا عدد نهایی مستقیم از دیتابیس آید، نه ردیف‌های خام.)"
-        )
-
     header = " | ".join(result.columns)
     separator = " | ".join("---" for _ in result.columns)
     body_lines = [" | ".join(str(row.get(c, "")) for c in result.columns) for row in result.rows]
@@ -123,6 +115,24 @@ def format_query_result(result: QueryResult, user_question: str = "") -> str:
         table += (
             f"\n\n(توجه: نمایش به {len(result.rows)} ردیف اول محدود شده است؛ "
             "نتایج کامل با دکمه «دانلود CSV» زیر پاسخ قابل دریافت است)"
+        )
+
+    # Aggregation hint: warn if many raw rows returned for an analytical question,
+    # but still return the data so the LLM can answer correctly.
+    _looks_aggregated = any(
+        col.lower() in {"sum", "total", "count", "avg", "average", "min", "max"}
+        or col.lower().startswith(("sum_", "total_", "count_", "avg_"))
+        for col in result.columns
+    )
+    if (
+        len(result.rows) > 20
+        and any(w in user_question for w in AGGREGATION_HINT_WORDS)
+        and not _looks_aggregated
+    ):
+        table += (
+            f"\n\n(راهنما: این کوئری {len(result.rows)} ردیف خام برگرداند. "
+            "اگر هدف محاسبه جمع/میانگین/تعداد است، یک کوئری با SUM/AVG/COUNT/GROUP BY بنویس "
+            "تا عدد نهایی مستقیم از دیتابیس برگردد.)"
         )
     return table
 
