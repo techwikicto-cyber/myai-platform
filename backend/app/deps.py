@@ -64,7 +64,8 @@ async def require_workspace_member(
     membership = await get_workspace_membership(workspace_id, user, db)
     if not membership:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="عضو این فضای کاری نیستید")
-    return user, membership.is_manager
+    is_manager = membership.is_manager or user.role == UserRole.manager
+    return user, is_manager
 
 
 async def require_workspace_manager(
@@ -75,6 +76,8 @@ async def require_workspace_manager(
     if user.role == UserRole.admin:
         return user
     membership = await get_workspace_membership(workspace_id, user, db)
-    if not membership or not membership.is_manager:
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="فقط مدیر فضای کاری اجازه دارد")
+    if not membership.is_manager and user.role != UserRole.manager:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="فقط مدیر فضای کاری اجازه دارد")
     return user

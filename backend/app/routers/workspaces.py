@@ -48,7 +48,7 @@ async def list_workspaces(user: User = Depends(get_current_user), db: AsyncSessi
         .where(WorkspaceMember.user_id == user.id)
         .order_by(Workspace.created_at)
     )
-    return [WorkspaceOut.model_validate(w).model_copy(update={"is_manager": is_manager}) for w, is_manager in result.all()]
+    return [WorkspaceOut.model_validate(w).model_copy(update={"is_manager": is_manager or user.role == UserRole.manager}) for w, is_manager in result.all()]
 
 
 @router.post("", response_model=WorkspaceOut, status_code=status.HTTP_201_CREATED)

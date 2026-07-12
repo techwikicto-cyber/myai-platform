@@ -21,13 +21,7 @@ class TokenResponse(BaseModel):
     user: "UserOut"
 
 
-class UserOut(BaseModel):
-    id: uuid.UUID
-    email: EmailStr
-    role: UserRole
-    is_active: bool
-
-    model_config = {"from_attributes": True}
+from app.schemas.user import UserOut
 
 
 class SystemStatus(BaseModel):
