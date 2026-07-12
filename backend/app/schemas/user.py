@@ -22,5 +22,8 @@ class UserOut(BaseModel):
     email: EmailStr
     role: UserRole
     is_active: bool
+    full_name: str | None = None
+    profile_picture: str | None = None
+    must_change_password: bool = False
 
     model_config = {"from_attributes": True}

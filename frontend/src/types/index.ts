@@ -5,6 +5,9 @@ export interface User {
   email: string
   role: UserRole
   is_active: boolean
+  must_change_password?: boolean
+  full_name?: string | null
+  profile_picture?: string | null
 }
 
 export type AnswerMode = 'strict' | 'open'

@@ -8,4 +8,8 @@ export const usersApi = {
   update: (id: string, payload: { role?: UserRole; is_active?: boolean; password?: string }) =>
     api.patch<User>(`/users/${id}`, payload),
   remove: (id: string) => api.delete<void>(`/users/${id}`),
+  updateProfile: (payload: { full_name?: string | null; profile_picture?: string | null }) =>
+    api.patch<User>('/users/me', payload),
+  changePassword: (payload: { current_password: string; new_password: string }) =>
+    api.post<User>('/users/me/password', payload),
 }

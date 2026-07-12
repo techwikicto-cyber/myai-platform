@@ -24,3 +24,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), default=UserRole.user, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # New fields for profile & forced password change
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    profile_picture: Mapped[str | None] = mapped_column(Text, nullable=True)  # Base64 encoded image

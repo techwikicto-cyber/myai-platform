@@ -11,7 +11,8 @@ from app.models.workspace import Workspace
 from app.models.db_connection import DbConnection
 from app.models.document import Document
 from app.schemas.user import UserCreate, UserOut, UserUpdate
-from app.security import hash_password
+from app.schemas.profile import ProfileUpdate, PasswordChange
+from app.security import hash_password, verify_password
 
 # Public router for listing users (accessible by admin + manager)
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -42,8 +43,43 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="این ایمیل قبلاً ثبت شده است")
-    user = User(email=payload.email, password_hash=hash_password(payload.password), role=payload.role)
+    user = User(
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        must_change_password=True
+    )
     db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_my_profile(
+    payload: ProfileUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+    if payload.profile_picture is not None:
+        user.profile_picture = payload.profile_picture
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/me/password", response_model=UserOut)
+async def change_my_password(
+    payload: PasswordChange,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="رمز عبور فعلی نادرست است")
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
     await db.commit()
     await db.refresh(user)
     return user
