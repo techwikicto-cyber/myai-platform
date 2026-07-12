@@ -105,17 +105,22 @@ export default function ProfileModal({ forced = false, onClose }: ProfileModalPr
     }
   }
 
+  function onPasswordSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    savePassword()
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#1e1e2e] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 p-4 bg-white/5">
-          <h2 className="text-lg font-bold text-white">
+        <div className="flex items-center justify-between border-b border-border p-4 bg-muted/30">
+          <h2 className="text-lg font-bold text-foreground">
             {forced ? 'تغییر رمز عبور اجباری' : 'تنظیمات حساب کاربری'}
           </h2>
           {!forced && (
-            <button onClick={onClose} className="rounded-md p-1.5 text-gray-400 hover:bg-white/10 hover:text-white transition-colors">
+            <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
               <IconX />
             </button>
           )}
@@ -123,11 +128,11 @@ export default function ProfileModal({ forced = false, onClose }: ProfileModalPr
 
         {/* Tabs */}
         {!forced && (
-          <div className="flex border-b border-white/5">
+          <div className="flex border-b border-border">
             <button
               onClick={() => setActiveTab('profile')}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'profile' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-gray-400 hover:text-white hover:bg-white/5'
+                activeTab === 'profile' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
               }`}
             >
               پروفایل
@@ -135,7 +140,7 @@ export default function ProfileModal({ forced = false, onClose }: ProfileModalPr
             <button
               onClick={() => setActiveTab('password')}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'password' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-gray-400 hover:text-white hover:bg-white/5'
+                activeTab === 'password' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
               }`}
             >
               تغییر رمز عبور
@@ -149,13 +154,13 @@ export default function ProfileModal({ forced = false, onClose }: ProfileModalPr
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-3">
                 <div 
-                  className="relative size-24 rounded-full border-2 border-white/10 bg-black/20 overflow-hidden cursor-pointer group flex items-center justify-center"
+                  className="relative size-24 rounded-full border-2 border-border bg-muted overflow-hidden cursor-pointer group flex items-center justify-center"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {avatar ? (
                     <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-3xl text-gray-500 font-bold">{user?.email[0].toUpperCase()}</span>
+                    <span className="text-3xl text-muted-foreground font-bold">{user?.email[0].toUpperCase()}</span>
                   )}
                   <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <IconUpload className="text-white mb-1" />
@@ -163,27 +168,27 @@ export default function ProfileModal({ forced = false, onClose }: ProfileModalPr
                   </div>
                 </div>
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
-                <p className="text-xs text-gray-400 text-center">حجم مجاز: ۵۰ کیلوبایت (خودکار فشرده می‌شود)</p>
+                <p className="text-xs text-muted-foreground text-center">حجم مجاز: ۵۰ کیلوبایت (خودکار فشرده می‌شود)</p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">نام و نام خانوادگی</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">نام و نام خانوادگی</label>
                   <input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     placeholder="مثال: علی رضایی"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">ایمیل (غیرقابل تغییر)</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">ایمیل (غیرقابل تغییر)</label>
                   <input
                     type="text"
                     value={user?.email || ''}
                     disabled
-                    className="w-full rounded-lg border border-white/5 bg-white/5 px-3 py-2 text-sm text-gray-400 outline-none"
+                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground outline-none opacity-70"
                     dir="ltr"
                   />
                 </div>
@@ -202,60 +207,66 @@ export default function ProfileModal({ forced = false, onClose }: ProfileModalPr
           )}
 
           {activeTab === 'password' && (
-            <div className="space-y-4">
+            <form onSubmit={onPasswordSubmit} className="space-y-4">
+              {/* Hidden username field for accessibility / autocomplete rules */}
+              <input type="text" autoComplete="username" value={user?.email || ''} readOnly className="hidden" />
+              
               {forced && (
-                <div className="mb-4 rounded-lg bg-blue-500/10 p-3 border border-blue-500/20 text-sm text-blue-200 leading-relaxed">
+                <div className="mb-4 rounded-lg bg-blue-500/10 p-3 border border-blue-500/20 text-sm text-blue-400 leading-relaxed">
                   از آنجا که این حساب کاربری توسط مدیر سیستم برای شما ساخته شده است، برای حفظ امنیت، ابتدا باید رمز عبور خود را تغییر دهید.
                 </div>
               )}
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">رمز عبور فعلی</label>
+                <label className="block text-sm font-medium text-foreground mb-1">رمز عبور فعلی</label>
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   dir="ltr"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">رمز عبور جدید</label>
+                <label className="block text-sm font-medium text-foreground mb-1">رمز عبور جدید</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   dir="ltr"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">تکرار رمز عبور جدید</label>
+                <label className="block text-sm font-medium text-foreground mb-1">تکرار رمز عبور جدید</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   dir="ltr"
                 />
               </div>
 
               {passwordError && (
-                <div className="text-sm text-red-400">{passwordError}</div>
+                <div className="text-sm text-destructive">{passwordError}</div>
               )}
 
               <div className="pt-2">
                 <button
-                  onClick={savePassword}
+                  type="submit"
                   disabled={passwordSaving}
-                  className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
                   {passwordSaving ? 'در حال ذخیره...' : (forced ? 'تغییر رمز و ورود' : 'تغییر رمز عبور')}
                 </button>
               </div>
-            </div>
+            </form>
           )}
         </div>
       </div>
