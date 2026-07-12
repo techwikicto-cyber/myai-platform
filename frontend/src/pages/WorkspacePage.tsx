@@ -6,7 +6,6 @@ import { chatApi, streamMessage } from '../api/chat'
 import { pinsApi } from '../api/pins'
 import { workspacesApi } from '../api/workspaces'
 import MessageBubble from '../components/MessageBubble'
-import ProfileModal from '../components/ProfileModal'
 import { Alert } from '../components/ui'
 import {
   IconCheckSmall,
@@ -25,11 +24,9 @@ import { parseMarkdownTable, tableToCSV } from '../components/MiniChart'
 import { copyText } from '../lib/clipboard'
 import { useThreadStore } from '../store/threads'
 import { useChatStore } from '../store/chat'
-import { useAuthStore } from '../store/auth'
 import type { ChatMessage, PinDto, Workspace } from '../types'
 
 export default function WorkspacePage() {
-  const { user } = useAuthStore()
   const { workspaceId, threadId } = useParams<{ workspaceId: string; threadId?: string }>()
   const navigate = useNavigate()
   const threadStore = useThreadStore()
