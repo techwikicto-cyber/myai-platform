@@ -21,36 +21,12 @@ const statusBadge: Record<string, { kind: 'success' | 'error' | 'warning' | 'mut
   failed: { kind: 'error', label: 'خطا' },
 }
 
-/** Scrolling ticker for long filenames */
-function ScrollingName({ name }: { name: string }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const textRef = useRef<HTMLSpanElement>(null)
-  const [needsScroll, setNeedsScroll] = useState(false)
-
-  useEffect(() => {
-    const el = containerRef.current
-    const txt = textRef.current
-    if (el && txt) {
-      setNeedsScroll(txt.scrollWidth > el.clientWidth + 2)
-    }
-  }, [name])
-
+/** Long filenames are simply truncated; the full name shows on hover. */
+function FileName({ name }: { name: string }) {
   return (
-    <div
-      ref={containerRef}
-      className="relative max-w-[220px] overflow-hidden"
-      title={name}
-    >
-      <span
-        ref={textRef}
-        className={clsx(
-          'whitespace-nowrap text-sm font-medium text-foreground inline-block',
-          needsScroll && 'animate-marquee',
-        )}
-      >
-        {name}
-      </span>
-    </div>
+    <span className="max-w-[320px] truncate text-sm font-medium text-foreground" title={name} dir="ltr">
+      {name}
+    </span>
   )
 }
 
@@ -394,7 +370,7 @@ export default function WorkspaceSettingsPage() {
                     <li key={d.id} className="flex items-center justify-between gap-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <IconDocument className="size-4 shrink-0 text-muted-foreground" />
-                        <ScrollingName name={d.filename} />
+                        <FileName name={d.filename} />
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
                         <span className={d.status === 'pending' || d.status === 'processing' ? 'animate-pulse' : ''}>
@@ -452,7 +428,7 @@ export default function WorkspaceSettingsPage() {
                     <li key={d.id} className="flex items-center justify-between gap-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <IconDocument className="size-4 shrink-0 text-muted-foreground" />
-                        <ScrollingName name={d.filename} />
+                        <FileName name={d.filename} />
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs text-primary">
