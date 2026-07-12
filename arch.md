@@ -38,3 +38,59 @@
 
 ## ۷. دیتابیس و مایگریشن (Alembic)
 تغییرات دیتابیس به وسیله `alembic` مدیریت می‌شود. اسکریپت `entrypoint.sh` در کانتینر بک‌اند تضمین می‌کند که به محض راه‌اندازی با Docker Compose، جدیدترین تغییرات شمای دیتابیس (مثل اضافه شدن ستون‌های مربوط به پروفایل) به طور خودکار با دستور `alembic upgrade head` اِعمال شود.
+
+## ۸. گراف معماری سیستم
+
+```mermaid
+graph TD
+    %% تعریف کلاینت
+    UserClient[💻 کلاینت کاربران <br/> React + Zustand + Tailwind]
+
+    %% دروازه اصلی
+    Nginx[🌐 Nginx Reverse Proxy <br/> Port 80 / 443]
+
+    %% سرویس‌های اصلی فرانت و بک
+    subgraph "Docker Compose Network"
+        Frontend[🎨 Frontend Service <br/> Node / Nginx Static]
+        Backend[⚙️ Backend Service <br/> FastAPI + Async Python]
+        
+        %% دیتابیس‌ها
+        Postgres[(🗄️ PostgreSQL + pgvector <br/> ذخیره وکتور و اطلاعات سیستم)]
+        
+        %% سرویس محلی
+        EmbeddingService[🧠 Local Embedding Service <br/> BGE-M3]
+        
+        %% بک‌گراند
+        BackgroundTasks[⏳ Background Tasks <br/> Chunking & Document Processing]
+    end
+
+    %% اتصال‌ها به دنیای خارج
+    ExternalLLM((🤖 مدل‌های زبانی خارجی <br/> OpenAI, LocalAI, etc.))
+    ExternalDB[(📊 دیتابیس‌های مشتریان <br/> SQL/NoSQL برای Query)]
+
+    %% جریان داده
+    UserClient -->|HTTP / SSE| Nginx
+    Nginx -->|/api/*| Backend
+    Nginx -->|Static Files| Frontend
+    
+    Backend <-->|CRUD & Vector Search| Postgres
+    Backend -->|Background Execution| BackgroundTasks
+    BackgroundTasks -->|Create Vectors| EmbeddingService
+    BackgroundTasks -->|Save Vectors| Postgres
+    
+    Backend <-->|RAG + Prompt Injection| ExternalLLM
+    Backend <-->|Tool: query_database| ExternalDB
+
+    %% استایل‌ها
+    classDef client fill:#3b82f6,stroke:#1d4ed8,stroke-width:2px,color:#fff;
+    classDef proxy fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#fff;
+    classDef backend fill:#10b981,stroke:#047857,stroke-width:2px,color:#fff;
+    classDef database fill:#6366f1,stroke:#4338ca,stroke-width:2px,color:#fff;
+    classDef external fill:#ec4899,stroke:#be185d,stroke-width:2px,color:#fff;
+    
+    class UserClient client;
+    class Nginx proxy;
+    class Backend,BackgroundTasks backend;
+    class Postgres,EmbeddingService database;
+    class ExternalLLM,ExternalDB external;
+```
