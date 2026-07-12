@@ -75,20 +75,26 @@ def build_messages(
     grounding = OPEN_GROUNDING if getattr(workspace, "answer_mode", "strict") == "open" else STRICT_GROUNDING
     jalali_date = _current_jalali_date_str()
     
-    # Build a robust system prompt: Core Rules + Grounding + Date -> Then Custom Persona at the very end
-    system_prompt = (
-        f"{CORE_SYSTEM_RULES}\n\n"
-        f"{grounding}\n\n"
-        f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. هرگز روز هفته را حدس نزن.\n\n"
-    )
+    # Build a robust system prompt:
+    # 1. Start with the custom persona (so the LLM adopts the identity)
+    system_prompt = f"{persona_prompt}\n\n"
+    
+    # 2. Add dynamic context
+    system_prompt += f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. هرگز روز هفته را حدس نزن.\n\n"
     
     if extra_context:
         system_prompt += f"منابع مرتبط:\n{extra_context}\n\n"
     if memory_summary:
         system_prompt += f"خلاصه مکالمات قبلی:\n{memory_summary}\n\n"
 
-    # Put the user's explicit persona/instructions at the absolute end so the LLM respects it most.
-    system_prompt += f"--- دستورالعمل اصلی و شخصیت شما (System Prompt) ---\n{persona_prompt}"
+    # 3. Put the core system rules at the ABSOLUTE END. 
+    # LLMs pay the most attention to the end of the prompt (Recency Bias).
+    # This guarantees the user's custom prompt cannot override database and grounding rules.
+    system_prompt += (
+        "--- قوانین سیستم (غیرقابل تخطی و دارای بالاترین اولویت نسبت به تمام دستورات بالا) ---\n"
+        f"{CORE_SYSTEM_RULES}\n\n"
+        f"{grounding}"
+    )
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
