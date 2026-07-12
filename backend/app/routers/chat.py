@@ -230,40 +230,58 @@ async def send_message(
             )
             await db.commit()
 
+        MAX_TOOL_ROUNDS = 5
+
         try:
             if db_tools:
                 content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
-                if tool_calls:
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": content or None,
-                            "tool_calls": [
-                                {
-                                    "id": tc["id"],
-                                    "type": "function",
-                                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                                }
-                                for tc in tool_calls
-                            ],
-                        }
-                    )
-                    for tc in tool_calls:
-                        tool_result, audit_id = await run_tool_call(
-                            db_connections_by_name, tc["arguments"],
-                            user_id=user.id, thread_id=thread.id, user_question=payload.content,
-                        )
-                        if audit_id:
-                            audit_ids.append(audit_id)
-                        messages.append({"role": "tool", "tool_call_id": tc["id"], "content": tool_result})
 
+                if not tool_calls:
+                    # LLM decided no DB query needed — direct answer (no streaming for brevity)
+                    full_content = content
+                    yield _sse({"type": "token", "content": content})
+                else:
+                    # ── Multi-round agentic tool-call loop ──────────────────────────────
+                    # Allows the LLM to run a corrective follow-up query when the first
+                    # result is raw/wrong (e.g. returns rows instead of aggregated values).
+                    rounds_used = 0
+                    while tool_calls and rounds_used < MAX_TOOL_ROUNDS:
+                        rounds_used += 1
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": content or None,
+                                "tool_calls": [
+                                    {
+                                        "id": tc["id"],
+                                        "type": "function",
+                                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                                    }
+                                    for tc in tool_calls
+                                ],
+                            }
+                        )
+                        for tc in tool_calls:
+                            tool_result, audit_id = await run_tool_call(
+                                db_connections_by_name, tc["arguments"],
+                                user_id=user.id, thread_id=thread.id, user_question=payload.content,
+                            )
+                            if audit_id:
+                                audit_ids.append(audit_id)
+                            messages.append({"role": "tool", "tool_call_id": tc["id"], "content": tool_result})
+
+                        # Ask the LLM: do you need another query or is the answer ready?
+                        if rounds_used < MAX_TOOL_ROUNDS:
+                            content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
+                        else:
+                            break  # safety cap — force final streaming answer
+                    # ────────────────────────────────────────────────────────────────────
+
+                    # Stream the final answer with all tool results in context
                     async for event in stream_chat(llm_config, messages):
                         if event["type"] == "token":
                             full_content += event["content"]
                             yield _sse({"type": "token", "content": event["content"]})
-                else:
-                    full_content = content
-                    yield _sse({"type": "token", "content": content})
             else:
                 async for event in stream_chat(llm_config, messages):
                     if event["type"] == "token":
