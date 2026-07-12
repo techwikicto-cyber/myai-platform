@@ -9,7 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.deps import get_current_user, get_workspace_membership, require_workspace_member
 from app.models.db_connection import DbConnection, DbEngine
 from app.models.document import Document, DocumentKind
@@ -312,7 +312,6 @@ async def send_message(
             # Save whatever was generated so far so the user sees it on return.
             if not completed and full_content:
                 try:
-                    from app.database import AsyncSessionLocal
                     async with AsyncSessionLocal() as temp_db:
                         partial = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
                         temp_db.add(partial)
@@ -328,8 +327,6 @@ async def send_message(
                         
                         # Link audits if any
                         if audit_ids:
-                            from sqlalchemy import update
-                            from app.models.query_audit_log import QueryAuditLog
                             await temp_db.execute(
                                 update(QueryAuditLog)
                                 .where(QueryAuditLog.id.in_(audit_ids))
