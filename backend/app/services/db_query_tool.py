@@ -275,5 +275,18 @@ async def run_tool_call(
             conn.workspace_id, conn.id, user_id, thread_id,
             raw_query, None, QueryAuditStatus.error, str(exc), None, duration,
         )
-        msg = f"خطا در اجرای کوئری: {exc}"
+        # SQL auto-repair: hand the real database error back to the model with an
+        # explicit instruction to diagnose, fix, and re-run in a fresh tool call.
+        # The multi-round agentic loop in the chat router lets it retry.
+        err_text = str(exc).strip()
+        query_display = raw_query if isinstance(raw_query, str) else json.dumps(raw_query, ensure_ascii=False)
+        msg = (
+            "اجرای کوئری با خطا مواجه شد.\n"
+            f"کوئری اجراشده:\n```\n{query_display}\n```\n"
+            f"متن دقیق خطای دیتابیس:\n{err_text}\n\n"
+            "این خطا را تحلیل کن و علت را پیدا کن (مثلاً نام ستون یا جدول اشتباه، خطای سینتکس، نوع JOIN، "
+            "نام مستعار، یا فرمت تاریخ)، سپس کوئری اصلاح‌شده را بلافاصله با یک فراخوانی جدید query_database "
+            "اجرا کن. برای پیداکردن نام درست ستون‌ها و جدول‌ها به اسکیمای «منابع مرتبط» رجوع کن و از خودت "
+            "ستون نساز. اگر بعد از چند تلاش همچنان خطا داشت، به کاربر بگو کوئری قابل اجرا نشد و دلیل را کوتاه توضیح بده."
+        )
         return msg, None, len(msg)

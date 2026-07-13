@@ -22,6 +22,18 @@ services:
     ports:
       - "${EMBEDDING_PORT:-8006}:8080"
 
+  # Optional cross-encoder reranker (improves RAG document precision).
+  # Opt-in: it only starts with `docker compose --profile rerank up`.
+  # To activate, also uncomment RERANKER_BASE_URL in the backend env below.
+  # First boot downloads the model, so the host needs internet access once.
+  reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    restart: unless-stopped
+    command: ["--model-id", "BAAI/bge-reranker-v2-m3"]
+    profiles: ["rerank"]
+    ports:
+      - "${RERANKER_PORT:-8007}:80"
+
   backend:
     build: ./backend
     restart: unless-stopped
@@ -35,6 +47,9 @@ services:
       DEFAULT_EMBEDDING_BASE_URL: http://embedding:8080/v1
       DEFAULT_EMBEDDING_API_TYPE: openai
       DEFAULT_EMBEDDING_MODEL: BAAI/bge-m3
+      # Enable cross-encoder reranking: uncomment the next line AND run with
+      # `docker compose --profile rerank up`. Leaving it unset disables reranking.
+      # RERANKER_BASE_URL: http://reranker:80
       CORS_ORIGINS: '["*"]'
     ports:
       - "${BACKEND_PORT:-8000}:8000"

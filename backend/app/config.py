@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     db_export_timeout_seconds: int = 60
     max_tool_result_chars_per_turn: int = 8000
 
+    # Cross-encoder reranker (optional). When reranker_base_url is set to a TEI
+    # /rerank endpoint (e.g. http://reranker:80), hybrid-search candidates are
+    # re-scored by a cross-encoder before the top_k reach the prompt. Empty =
+    # disabled (falls back to the RRF order), so this is fully opt-in.
+    reranker_base_url: str = ""
+    reranker_model: str = ""            # optional; only needed by some rerankers
+    rerank_candidate_pool: int = 20     # how many hybrid candidates to rerank down to top_k
+    reranker_timeout_seconds: int = 20
+
 
 @lru_cache
 def get_settings() -> Settings:
