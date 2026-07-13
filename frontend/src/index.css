@@ -107,6 +107,8 @@ kbd {
 /* ---------- Markdown rendering inside chat bubbles ---------- */
 .markdown-body {
   line-height: 1.9;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 .markdown-body p { margin: 0 0 0.6em 0; }
 .markdown-body p:last-child { margin-bottom: 0; }
@@ -119,6 +121,7 @@ kbd {
   border-radius: 0.5rem;
   overflow-x: auto;
   font-size: 0.85em;
+  margin: 0.6em 0;
 }
 .markdown-body code {
   direction: ltr;
@@ -150,15 +153,56 @@ kbd {
 }
 .markdown-body ul, .markdown-body ol {
   padding-inline-start: 1.4rem;
-  margin: 0 0 0.6em 0;
+  margin: 0.6em 0;
+}
+.markdown-body ul {
+  list-style-type: disc;
+}
+.markdown-body ol {
+  list-style-type: decimal;
+}
+.markdown-body li {
+  margin: 0.3em 0;
+  line-height: 1.8;
+}
+.markdown-body li::marker {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.markdown-body li > p {
+  margin: 0;
+  display: inline;
+}
+.markdown-body strong, .markdown-body b {
+  font-weight: 700;
+  color: var(--color-foreground);
+}
+.markdown-body em, .markdown-body i {
+  font-style: italic;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
   margin: 0.8em 0 0.4em;
   font-weight: 700;
+}
+.markdown-body h1 { font-size: 1.3em; }
+.markdown-body h2 { font-size: 1.15em; }
+.markdown-body h3 { font-size: 1.05em; }
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1em 0;
 }
 .markdown-body blockquote {
   border-inline-start: 3px solid var(--color-primary);
   margin: 0.6em 0;
   padding: 0.2em 0.8em;
   color: var(--color-muted-foreground);
+}
+.markdown-body a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-body a:hover {
+  color: var(--color-primary-hover);
 }
