@@ -78,7 +78,11 @@ def build_tool_schema(connection_names: list[str], has_mongo: bool, has_sql: boo
         "function": {
             "name": TOOL_NAME,
             "description": (
-                "اجرای یک کوئری فقط-خواندنی روی دیتابیس متصل به این فضای کاری برای پاسخ به سوالات کاربر درباره داده‌ها. "
+                "اجرای یک کوئری فقط-خواندنی روی دیتابیس متصل به این فضای کاری. "
+                "تو باید برای پاسخ به هر سوالی درباره داده‌ها، آمار، مشتریان، فاکتورها، "
+                "تراکنش‌ها، درآمد، هزینه یا هرگونه اطلاعات عددی از این ابزار استفاده کنی. "
+                "هرگز بدون استفاده از این ابزار به سوالات داده‌ای پاسخ نده. "
+                "بعد از دریافت نتیجه، حتماً متن کوئری اجراشده را هم در پاسخ نمایش بده. "
                 + " ".join(query_desc)
             ),
             "parameters": {
@@ -239,7 +243,11 @@ async def run_tool_call(
             conn.workspace_id, conn.id, user_id, thread_id,
             raw_query, None, QueryAuditStatus.success, None, len(result.rows), duration,
         )
-        return format_query_result(result, user_question), audit_id
+        result_text = format_query_result(result, user_question)
+        # Prepend the executed query so the LLM can display it to the user
+        query_display = raw_query if isinstance(raw_query, str) else json.dumps(raw_query, ensure_ascii=False)
+        result_text = f"کوئری اجراشده:\n```\n{query_display}\n```\n\nنتیجه:\n{result_text}"
+        return result_text, audit_id
     except Exception as exc:  # noqa: BLE001
         duration = int(time.time() * 1000) - start_ms
         await _write_audit_log(
