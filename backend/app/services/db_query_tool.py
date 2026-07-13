@@ -103,7 +103,12 @@ def build_tool_schema(connection_names: list[str], has_mongo: bool, has_sql: boo
 
 def format_query_result(result: QueryResult, user_question: str = "") -> str:
     if not result.rows:
-        return "کوئری اجرا شد اما هیچ ردیفی برنگشت."
+        return (
+            "کوئری اجرا شد اما هیچ ردیفی برنگشت. "
+            "(راهنما: اگر مطمئنی داده‌ای باید وجود داشته باشد، ممکن است شرط‌های WHERE، "
+            "نوع JOINها یا مقادیر فیلتر خیلی سخت‌گیرانه یا اشتباه بوده باشد. لطفاً کوئری "
+            "را اصلاح کرده و مجدداً امتحان کن.)"
+        )
 
     header = " | ".join(result.columns)
     separator = " | ".join("---" for _ in result.columns)
