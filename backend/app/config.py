@@ -16,10 +16,11 @@ class Settings(BaseSettings):
     default_embedding_model: str = "BAAI/bge-m3"
     cors_origins: list[str] = ["*"]
     upload_max_mb: int = 50
-    db_query_row_limit: int = 1000
+    db_query_row_limit: int = 50
     db_query_timeout_seconds: int = 15
     db_export_row_limit: int = 500000
     db_export_timeout_seconds: int = 60
+    max_tool_result_chars_per_turn: int = 8000
 
 
 @lru_cache

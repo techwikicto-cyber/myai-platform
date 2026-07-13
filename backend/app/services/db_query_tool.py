@@ -17,7 +17,13 @@ from app.services.query_safety import (
 settings = get_settings()
 
 TOOL_NAME = "query_database"
-MAX_RESULT_CHARS = 20000
+# Per-call cap on how much of a single query result is embedded into the LLM
+# prompt. Kept modest (much smaller than the old 20000) because this text is
+# added to the *same* prompt as the schema, grounding rules, and conversation
+# history — several large results in one multi-round turn can otherwise push
+# the total prompt past the model's context window. Full results are always
+# available to the user via the CSV export endpoint, independent of this cap.
+MAX_RESULT_CHARS = 4000
 
 # Aggregation hint: if question looks analytical but query returns too many raw rows, warn the model.
 AGGREGATION_HINT_WORDS = {"جمع", "مجموع", "میانگین", "متوسط", "تعداد", "چند", "درصد", "sum", "total", "average", "count"}
@@ -185,16 +191,21 @@ async def run_tool_call(
     user_id: uuid.UUID | None = None,
     thread_id: uuid.UUID | None = None,
     user_question: str = "",
-) -> tuple[str, uuid.UUID | None]:
+) -> tuple[str, uuid.UUID | None, int]:
     """Executes one query_database tool call.
 
-    Returns (result_text_for_llm, audit_id). audit_id is set only for
-    successfully executed queries, so the caller can link it to the saved
-    assistant message and offer a full-result CSV export."""
+    Returns (result_text_for_llm, audit_id, result_text_char_len). audit_id is
+    set only for successfully executed queries, so the caller can link it to
+    the saved assistant message and offer a full-result CSV export.
+    result_text_char_len lets the caller enforce a cumulative character
+    budget across multiple tool-calling rounds within the same turn, so a
+    single request can never silently balloon the prompt past the model's
+    context window."""
     try:
         arguments = json.loads(arguments_json)
     except json.JSONDecodeError:
-        return "خطا: آرگومان‌های ارسال‌شده برای ابزار کوئری، JSON معتبر نیستند.", None
+        msg = "خطا: آرگومان‌های ارسال‌شده برای ابزار کوئری، JSON معتبر نیستند."
+        return msg, None, len(msg)
 
     connection_name = arguments.get("connection_name")
     query = arguments.get("query")
@@ -203,10 +214,12 @@ async def run_tool_call(
         if len(connections_by_name) == 1:
             conn = next(iter(connections_by_name.values()))
         else:
-            return f"خطا: اتصال دیتابیسی با نام «{connection_name}» پیدا نشد.", None
+            msg = f"خطا: اتصال دیتابیسی با نام «{connection_name}» پیدا نشد."
+            return msg, None, len(msg)
 
     if not query:
-        return "خطا: کوئری ارسال نشده است.", None
+        msg = "خطا: کوئری ارسال نشده است."
+        return msg, None, len(msg)
 
     raw_query = query
     parsed_query: str | dict = query
@@ -216,7 +229,8 @@ async def run_tool_call(
         try:
             parsed_query = json.loads(query)
         except json.JSONDecodeError:
-            return "خطا: برای MongoDB باید کوئری به‌صورت JSON معتبر ارسال شود.", None
+            msg = "خطا: برای MongoDB باید کوئری به‌صورت JSON معتبر ارسال شود."
+            return msg, None, len(msg)
         # Allowlist check for MongoDB collection
         try:
             if conn.allowed_tables is not None:
@@ -226,7 +240,8 @@ async def run_tool_call(
                 conn.workspace_id, conn.id, user_id, thread_id,
                 raw_query, None, QueryAuditStatus.rejected, str(exc), None, None,
             )
-            return f"خطای امنیتی: {exc}", None
+            msg = f"خطای امنیتی: {exc}"
+            return msg, None, len(msg)
     else:
         # Allowlist check for SQL tables
         try:
@@ -237,7 +252,8 @@ async def run_tool_call(
                 conn.workspace_id, conn.id, user_id, thread_id,
                 raw_query, None, QueryAuditStatus.rejected, str(exc), None, None,
             )
-            return f"خطای امنیتی: {exc}", None
+            msg = f"خطای امنیتی: {exc}"
+            return msg, None, len(msg)
 
     try:
         result = await factory.execute_query(
@@ -252,11 +268,12 @@ async def run_tool_call(
         # Prepend the executed query so the LLM can display it to the user
         query_display = raw_query if isinstance(raw_query, str) else json.dumps(raw_query, ensure_ascii=False)
         result_text = f"کوئری اجراشده:\n```\n{query_display}\n```\n\nنتیجه:\n{result_text}"
-        return result_text, audit_id
+        return result_text, audit_id, len(result_text)
     except Exception as exc:  # noqa: BLE001
         duration = int(time.time() * 1000) - start_ms
         await _write_audit_log(
             conn.workspace_id, conn.id, user_id, thread_id,
             raw_query, None, QueryAuditStatus.error, str(exc), None, duration,
         )
-        return f"خطا در اجرای کوئری: {exc}", None
+        msg = f"خطا در اجرای کوئری: {exc}"
+        return msg, None, len(msg)

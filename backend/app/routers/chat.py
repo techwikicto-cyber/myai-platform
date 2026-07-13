@@ -244,8 +244,23 @@ async def send_message(
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
                     # Allows the LLM to run a corrective follow-up query when the first
                     # result is raw/wrong (e.g. returns rows instead of aggregated values).
+                    #
+                    # IMPORTANT: rounds_used alone does not bound how much text gets
+                    # appended to `messages`. Each round can add a full tool-result table,
+                    # and previously this had no cap — long/expensive result sets across a
+                    # few rounds could push the final prompt (system context + history +
+                    # all tool results) past the underlying model's context window. Many
+                    # OpenAI-compatible gateways silently truncate an over-long prompt from
+                    # the left instead of erroring, which drops the actual data while
+                    # leaving trailing instructions intact — the model then produces a
+                    # fluent but fabricated answer instead of failing loudly. We now track
+                    # cumulative tool-result size and stop pulling in more data once the
+                    # budget is spent, forcing a final answer from whatever was retrieved
+                    # so far (with a nudge to say so if it's insufficient).
                     rounds_used = 0
-                    while tool_calls and rounds_used < MAX_TOOL_ROUNDS:
+                    tool_result_chars_used = 0
+                    budget_exhausted = False
+                    while tool_calls and rounds_used < MAX_TOOL_ROUNDS and not budget_exhausted:
                         rounds_used += 1
                         messages.append(
                             {
@@ -262,16 +277,36 @@ async def send_message(
                             }
                         )
                         for tc in tool_calls:
-                            tool_result, audit_id = await run_tool_call(
+                            if tool_result_chars_used >= settings.max_tool_result_chars_per_turn:
+                                # Budget already spent by an earlier tool call in this same
+                                # round — still respond to every pending tool_call id (the
+                                # API requires one tool message per call) but don't run it.
+                                budget_exhausted = True
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "content": (
+                                        "این کوئری اجرا نشد: سقف حجم داده‌ی قابل بارگذاری در همین "
+                                        "پاسخ برای این پیام تمام شده است. با داده‌های به‌دست‌آمده تا "
+                                        "همین‌جا پاسخ بده و اگر کافی نبود، صریح بگو که نتیجه ناقص است "
+                                        "و کاربر باید سوال را محدودتر (مثلاً با فیلتر یا بازه زمانی) "
+                                        "دوباره بپرسد."
+                                    ),
+                                })
+                                continue
+                            tool_result, audit_id, result_chars = await run_tool_call(
                                 db_connections_by_name, tc["arguments"],
                                 user_id=user.id, thread_id=thread.id, user_question=payload.content,
                             )
                             if audit_id:
                                 audit_ids.append(audit_id)
+                            tool_result_chars_used += result_chars
+                            if tool_result_chars_used >= settings.max_tool_result_chars_per_turn:
+                                budget_exhausted = True
                             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": tool_result})
 
                         # Ask the LLM: do you need another query or is the answer ready?
-                        if rounds_used < MAX_TOOL_ROUNDS:
+                        if rounds_used < MAX_TOOL_ROUNDS and not budget_exhausted:
                             content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
                         else:
                             break  # safety cap — force final streaming answer
