@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import json
@@ -237,9 +238,13 @@ async def send_message(
                 content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
 
                 if not tool_calls:
-                    # LLM decided no DB query needed — direct answer (no streaming for brevity)
+                    # LLM decided no DB query needed — fake-stream the already-generated
+                    # content in small chunks for a consistent typing UX. No extra LLM call.
                     full_content = content
-                    yield _sse({"type": "token", "content": content})
+                    _CHUNK = 12  # characters per SSE event
+                    for i in range(0, len(content), _CHUNK):
+                        yield _sse({"type": "token", "content": content[i : i + _CHUNK]})
+                        await asyncio.sleep(0.015)
                 else:
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
                     # Allows the LLM to run a corrective follow-up query when the first
