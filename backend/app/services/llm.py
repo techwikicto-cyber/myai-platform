@@ -19,10 +19,11 @@ async def stream_chat(
     config: LlmConfig,
     messages: list[dict],
     tools: list[dict] | None = None,
+    temperature: float = 0.4,
 ) -> AsyncGenerator[dict, None]:
     """Yields dict events: {"type": "token", "content": str} or {"type": "tool_calls", "tool_calls": [...]}"""
     client = get_client(config)
-    kwargs = {"model": config.model, "messages": messages, "stream": True}
+    kwargs = {"model": config.model, "messages": messages, "stream": True, "temperature": temperature}
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
@@ -54,10 +55,14 @@ async def complete_chat_with_tools(
     config: LlmConfig, messages: list[dict], tools: list[dict]
 ) -> tuple[str, list[dict]]:
     """Non-streaming call used when a workspace has DB tools available, so we can decide
-    whether the model wants to call a tool before streaming the final answer to the user."""
+    whether the model wants to call a tool before streaming the final answer to the user.
+    
+    temperature=0 ensures deterministic query generation — the same question
+    always produces the same SQL query, yielding consistent results."""
     client = get_client(config)
     resp = await client.chat.completions.create(
-        model=config.model, messages=messages, tools=tools, tool_choice="auto", stream=False
+        model=config.model, messages=messages, tools=tools, tool_choice="auto",
+        stream=False, temperature=0,
     )
     message = resp.choices[0].message
     tool_calls = [
