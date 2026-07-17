@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -10,6 +10,7 @@ from app.database import get_db
 from app.deps import require_admin, require_workspace_manager, require_workspace_member
 from app.models.document import Document, DocumentKind
 from app.models.sharing import DocumentWorkspaceShare
+from app.models.thread import Thread
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.document import DocumentOut, DocumentShareUpdate, SharedDocumentOut
@@ -166,4 +167,14 @@ async def delete_document(
     if not document or document.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="سند پیدا نشد")
     await db.delete(document)
+
+    # A thread's memory_summary is an LLM-written text blob that may already have
+    # folded in content from this document (e.g. "per the uploaded contract, ...").
+    # Deleting the document does not rewrite that summary, so it would otherwise
+    # keep resurfacing the deleted content forever on every future turn. Clearing
+    # it here is deterministic — no reliance on the model noticing the source is
+    # gone — the next turn just regenerates a fresh summary from current history.
+    await db.execute(
+        update(Thread).where(Thread.workspace_id == workspace_id).values(memory_summary=None)
+    )
     await db.commit()

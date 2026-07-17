@@ -252,12 +252,23 @@ async def send_message(
         inventory = (
             "وضعیت قطعی و فعلی این فضای کاری: هیچ سند و هیچ دیتابیسی اضافه نشده است. "
             "اگر کاربر درباره اسناد، جداول، فیلدها یا داده‌های موجود پرسید، صریح بگو که هنوز هیچ سند یا "
-            "دیتابیسی اضافه نشده است و هرگز جدول، فیلد، سند یا داده‌ی نمونه/فرضی از خودت نساز. "
-            "هشدار مهم: اگر در پیام‌های قبلی همین گفتگو یا در خلاصه مکالمات، ادعایی درباره وجود جدول "
-            "(مثل orders یا customers)، دیتابیس یا سند شده است، آن ادعاها اشتباه و ساختگی بوده‌اند — "
-            "آن‌ها را کاملاً نادیده بگیر و تکرارشان نکن؛ فقط همین وضعیت فعلی معتبر است."
+            "دیتابیسی اضافه نشده است و هرگز جدول، فیلد، سند یا داده‌ی نمونه/فرضی از خودت نساز."
         )
         extra_context = f"{inventory}\n\n{extra_context}" if extra_context else inventory
+
+    # Belt-and-suspenders against stale sources: a document can be deleted mid-thread.
+    # thread.memory_summary is cleared on delete (see documents.py), but the raw recent
+    # history built below still carries whatever the assistant said about it earlier in
+    # this same conversation, until it ages out of the token budget. The list above is
+    # the only current truth — anything else about documents/tables in earlier turns of
+    # this conversation is stale and must not be repeated.
+    staleness_note = (
+        "هشدار مهم: فهرست اسناد و اتصال‌های دیتابیسِ بالا، تنها منابع معتبر و موجود همین الان "
+        "هستند. اگر در پیام‌های قبلی همین گفتگو یا در خلاصه مکالمات، ادعایی درباره سند، جدول یا "
+        "دیتابیسی شده که در این فهرست فعلی نیست، آن منبع حذف شده یا از اول ساختگی بوده — آن ادعا "
+        "را کاملاً نادیده بگیر و تکرارش نکن."
+    )
+    extra_context = f"{extra_context}\n\n{staleness_note}" if extra_context else staleness_note
 
     messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
