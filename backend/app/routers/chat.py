@@ -452,6 +452,26 @@ async def send_message(
                             if event["type"] == "token":
                                 full_content += event["content"]
                                 yield _sse({"type": "token", "content": event["content"]})
+            elif (
+                workspace.answer_mode == "strict"
+                and not has_retrieved_document_evidence
+                and not _looks_like_resource_question(payload.content)
+            ):
+                # No DB is connected here (db_tools is empty), so the only possible
+                # grounding is retrieved document evidence. AnythingLLM's "query mode"
+                # makes this exact check in code — zero retrieved chunks means the LLM
+                # is never even called — rather than trusting a prompt instruction to
+                # make the model admit it doesn't know. We mirror that: a hard,
+                # deterministic refusal beats hoping a weak model stays honest.
+                full_content = (
+                    "در اسناد این فضای کاری هیچ محتوای مرتبطی با این سوال پیدا نشد. چون این فضای "
+                    "کاری در حالت «سخت‌گیرانه» است، به‌جای حدس‌زدن پاسخی داده نمی‌شود. سند مرتبط را "
+                    "آپلود کنید یا حالت پاسخ‌دهی این فضای کاری را به «باز» تغییر دهید."
+                )
+                _CHUNK = 12
+                for i in range(0, len(full_content), _CHUNK):
+                    yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
+                    await asyncio.sleep(0.015)
             else:
                 async for event in stream_chat(llm_config, messages):
                     if event["type"] == "token":
