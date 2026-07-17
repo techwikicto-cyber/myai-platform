@@ -287,7 +287,7 @@ export default function WorkspacePage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Chat area */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
+          <div className="mx-auto max-w-5xl space-y-4 px-6 py-6">
             {messages.length === 0 && !error && (
               <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">
@@ -415,7 +415,7 @@ export default function WorkspacePage() {
       </div>
 
       <div className="border-t border-border bg-card px-6 py-4">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-5xl">
           {error && (
             <div className="mb-3">
               <Alert kind="error">{error}</Alert>
