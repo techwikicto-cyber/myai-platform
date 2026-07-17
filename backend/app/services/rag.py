@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from sqlalchemy import and_, delete, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.document import Document, DocumentChunk, DocumentKind, DocumentStatus
 from app.models.sharing import DocumentWorkspaceShare
@@ -12,9 +11,6 @@ from app.services.chunking import chunk_text, estimate_tokens
 from app.services.embeddings import embed_texts
 from app.services.model_config import EmbeddingConfig, get_embedding_config
 from app.services.parsers import ParseError, extract_text
-from app.services.reranker import rerank, rerank_enabled
-
-_settings = get_settings()
 
 EMBED_BATCH_SIZE = 32
 MIN_SIMILARITY = 0.35  # chunks with cosine similarity below this are dropped
@@ -201,19 +197,6 @@ async def search_similar_chunks(
             pass  # keyword search is best-effort; vector results still returned
 
     sorted_results = sorted(rrf_scores.values(), key=lambda x: x["score"], reverse=True)
-
-    # Cross-encoder re-ranking (optional): hybrid search (vector + BM25 via RRF) is
-    # good at recall but noisy at precision. When a reranker is configured, re-score
-    # a larger candidate pool with a cross-encoder and let it choose the real top_k.
-    # Best-effort: on any reranker failure we keep the RRF ordering.
-    if rerank_enabled() and query_text.strip() and len(sorted_results) > 1:
-        pool = sorted_results[: max(_settings.rerank_candidate_pool, top_k)]
-        scores = await rerank(query_text, [r["content"] for r in pool])
-        if scores is not None:
-            for r, s in zip(pool, scores):
-                r["rerank_score"] = s
-            pool.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
-            sorted_results = pool
 
     return [
         ChunkResult(
