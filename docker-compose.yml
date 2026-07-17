@@ -30,7 +30,7 @@ services:
   reranker:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8.1
     restart: unless-stopped
-    command: ["--model-id", "BAAI/bge-reranker-v2-m3"]
+    command: ["--model-id", "newtechstudio/bge-reranker-v2-m3-onnx"]
     environment:
       # Explicit base endpoint fixes TEI's "relative URL without a base" download error.
       HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
@@ -56,7 +56,7 @@ services:
       DEFAULT_EMBEDDING_API_TYPE: openai
       DEFAULT_EMBEDDING_MODEL: BAAI/bge-m3
       RERANKER_BASE_URL: http://reranker:80
-      RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      RERANKER_MODEL: ${RERANKER_MODEL:-newtechstudio/bge-reranker-v2-m3-onnx}
       CORS_ORIGINS: '["*"]'
     ports:
       - "${BACKEND_PORT:-8000}:8000"
