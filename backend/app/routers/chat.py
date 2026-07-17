@@ -262,6 +262,11 @@ async def send_message(
     messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
     async def event_stream():
+        # The tool-retry branch replaces the message list with an augmented copy.
+        # Declare the enclosing value explicitly; otherwise Python treats every
+        # reference in this coroutine as a local variable and fails before the
+        # first model call.
+        nonlocal messages
         full_content = ""
         completed = False
         audit_ids: list[uuid.UUID] = []

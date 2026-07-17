@@ -28,7 +28,7 @@ services:
   # bge-reranker-v2-m3 is multilingual (good for Persian). To use a smaller,
   # faster English-only model, change ONLY the --model-id below.
   reranker:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8.1
     restart: unless-stopped
     command: ["--model-id", "BAAI/bge-reranker-v2-m3"]
     environment:
