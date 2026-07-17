@@ -247,7 +247,18 @@ export default function WorkspacePage() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-        <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
+          {workspace?.is_manager && (
+            <Link
+              to={`/workspace/${workspaceId}/settings`}
+              title="تنظیمات فضای کاری"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <IconSettings />
+            </Link>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -282,15 +293,6 @@ export default function WorkspacePage() {
               </span>
             )}
           </button>
-          {workspace?.is_manager && (
-            <Link
-              to={`/workspace/${workspaceId}/settings`}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <IconSettings />
-              تنظیمات
-            </Link>
-          )}
         </div>
       </header>
 
