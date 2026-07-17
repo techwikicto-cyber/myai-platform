@@ -381,14 +381,6 @@ export default function WorkspacePage() {
                   </ul>
                 )}
               </div>
-              {workspace?.is_manager && (
-                <Link
-                  to={`/workspace/${workspaceId}/settings`}
-                  className="block text-center text-sm text-primary hover:underline"
-                >
-                  مدیریت اسناد و اتصال‌ها
-                </Link>
-              )}
             </div>
           </div>
         )}
