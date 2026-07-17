@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,7 +24,7 @@ from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, Thr
 from app.services.chat_context import build_messages
 from app.services.db_connectors import factory
 from app.services.db_chat import build_db_tools_and_context
-from app.services.db_query_tool import run_tool_call, summarize_schema
+from app.services.db_query_tool import run_tool_call
 from app.services.embeddings import embed_texts
 from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
 from app.services.memory import maybe_summarize_history
@@ -78,6 +79,47 @@ def _looks_like_data_question(text: str) -> bool:
     return any(w in t for w in _DATA_SIGNAL_WORDS)
 
 
+_COLLATE_RE = re.compile(r'\s*COLLATE\s*"[^"]*"', re.IGNORECASE)
+
+
+def _render_schema_markdown(conn: DbConnection) -> str:
+    """Human-readable schema listing for the deterministic resource answer: one compact
+    Markdown table per DB table/collection, with the COLLATE clause stripped from column
+    types. summarize_schema() (db_query_tool.py) stays as-is for the LLM prompt — dense
+    comma-separated text is fine for a model to parse but unreadable for a person reading
+    it directly in chat, which is what this function is for."""
+    if not conn.schema_summary:
+        return "(اسکیما هنوز استخراج نشده است — از دکمه «به‌روزرسانی اسکیما» استفاده کنید)"
+
+    allowed = conn.allowed_tables
+
+    if conn.engine == DbEngine.mongodb:
+        blocks = []
+        for coll in conn.schema_summary.get("collections", []):
+            if allowed is not None and coll["name"].lower() not in {k.lower() for k in allowed}:
+                continue
+            allowed_cols = (allowed or {}).get(coll["name"]) or (allowed or {}).get(coll["name"].lower())
+            fields = {
+                k: v for k, v in coll.get("sample_fields", {}).items()
+                if allowed_cols is None or k in allowed_cols
+            }
+            rows = "\n".join(f"| `{k}` | {v} |" for k, v in fields.items())
+            blocks.append(f"**کالکشن `{coll['name']}`**\n\n| فیلد | نوع |\n|---|---|\n{rows}")
+        return "\n\n".join(blocks) or "(کالکشنی پیدا نشد)"
+
+    blocks = []
+    for table in conn.schema_summary.get("tables", []):
+        if allowed is not None and table["name"].lower() not in {k.lower() for k in allowed}:
+            continue
+        allowed_cols = None
+        if allowed is not None:
+            allowed_cols = allowed.get(table["name"]) or allowed.get(table["name"].lower())
+        cols = [c for c in table.get("columns", []) if allowed_cols is None or c["name"] in allowed_cols]
+        rows = "\n".join(f"| `{c['name']}` | {_COLLATE_RE.sub('', c['type']).strip()} |" for c in cols)
+        blocks.append(f"**جدول `{table['name']}`**\n\n| ستون | نوع |\n|---|---|\n{rows}")
+    return "\n\n".join(blocks) or "(جدولی پیدا نشد)"
+
+
 def _build_resource_listing(ready_docs: list[Document], connections: dict[str, DbConnection]) -> str:
     """Renders the 'what documents/databases do you have' answer directly from live rows,
     never through the LLM. A resource question repeated in the same thread after a
@@ -96,7 +138,7 @@ def _build_resource_listing(ready_docs: list[Document], connections: dict[str, D
     if connections:
         for name, conn in connections.items():
             parts.append(
-                f"### اتصال دیتابیس «{name}» (نوع: {conn.engine.value})\n{summarize_schema(conn)}"
+                f"### اتصال دیتابیس «{name}» (نوع: {conn.engine.value})\n\n{_render_schema_markdown(conn)}"
             )
     else:
         parts.append("### اتصال دیتابیس\nهیچ دیتابیسی به این فضای کاری وصل نشده است.")
