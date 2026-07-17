@@ -1,7 +1,7 @@
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, delete, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -26,6 +26,7 @@ class ChunkResult:
     content: str
     filename: str
     chunk_index: int
+    similarity: float | None = None
 
 
 async def process_document_background(document_id: uuid.UUID, content: bytes) -> None:
@@ -53,6 +54,9 @@ async def process_document(
     await db.commit()
 
     try:
+        # A retry after a worker restart must not make duplicate chunks that bias
+        # retrieval toward a stale or partial ingestion.
+        await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
         text_content = extract_text(document.filename, content)
         chunks = chunk_text(text_content, document.source_type)
         if not chunks:
@@ -156,6 +160,7 @@ async def search_similar_chunks(
             "filename": filename,
             "chunk_index": chunk.chunk_index,
             "score": 1.0 / (RRF_K + rank + 1),
+            "similarity": float(_sim),
         }
 
     # --- Keyword (BM25 tsvector) search ---
@@ -190,6 +195,7 @@ async def search_similar_chunks(
                         "filename": filename,
                         "chunk_index": chunk_index,
                         "score": 1.0 / (RRF_K + rank + 1),
+                        "similarity": None,
                     }
         except Exception:  # noqa: BLE001
             pass  # keyword search is best-effort; vector results still returned
@@ -210,6 +216,9 @@ async def search_similar_chunks(
             sorted_results = pool
 
     return [
-        ChunkResult(content=r["content"], filename=r["filename"], chunk_index=r["chunk_index"])
+        ChunkResult(
+            content=r["content"], filename=r["filename"], chunk_index=r["chunk_index"],
+            similarity=r.get("similarity"),
+        )
         for r in sorted_results[:top_k]
     ]

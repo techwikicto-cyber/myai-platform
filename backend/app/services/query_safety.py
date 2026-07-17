@@ -1,6 +1,7 @@
 import sqlglot
 import sqlglot.expressions as exp
 import sqlparse
+import re
 from sqlparse.tokens import DML, Keyword
 
 FORBIDDEN_KEYWORDS = {
@@ -36,6 +37,21 @@ def ensure_readonly_sql(sql: str, default_row_limit: int, engine: str = "") -> s
     if len(statements) != 1:
         raise QuerySafetyError("فقط اجرای یک عبارت SQL در هر بار مجاز است")
 
+    # sqlparse is useful for tokenisation but is not a security boundary. Parse
+    # the AST too: this permits legitimate CTEs while rejecting data-modifying
+    # statements and SELECT INTO disguised as a read query.
+    try:
+        parsed = sqlglot.parse_one(cleaned)
+    except Exception as exc:  # noqa: BLE001
+        raise QuerySafetyError(f"ساختار SQL معتبر نیست: {exc}") from exc
+    if not isinstance(parsed, (exp.Select, exp.Union, exp.Intersect, exp.Except)):
+        raise QuerySafetyError("فقط عبارت‌های خواندنی SELECT/CTE مجاز است")
+    if parsed.find(exp.Into) is not None:
+        raise QuerySafetyError("SELECT INTO مجاز نیست")
+    forbidden_nodes = (exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter, exp.Merge)
+    if any(parsed.find(node) is not None for node in forbidden_nodes):
+        raise QuerySafetyError("عبارت‌های تغییردهندهٔ داده یا ساختار مجاز نیستند")
+
     stmt = statements[0]
     upper_sql = cleaned.upper()
 
@@ -49,8 +65,19 @@ def ensure_readonly_sql(sql: str, default_row_limit: int, engine: str = "") -> s
 
     engine_lower = engine.lower()
 
+    # Fetching only a few rows after executing an unlimited statement is not a
+    # resource guard. Never accept a model-supplied limit above the app cap.
+    limit_match = re.search(r"\bLIMIT\s+(\d+)\b", upper_sql)
+    if "LIMIT" in upper_sql and not limit_match:
+        raise QuerySafetyError("LIMIT باید یک عدد ثابت باشد")
+    if limit_match and int(limit_match.group(1)) > default_row_limit:
+        raise QuerySafetyError(f"LIMIT نباید بیشتر از {default_row_limit} باشد")
+    top_match = re.search(r"\bTOP\s*(?:\(\s*)?(\d+)", upper_sql)
+    if top_match and int(top_match.group(1)) > default_row_limit:
+        raise QuerySafetyError(f"TOP نباید بیشتر از {default_row_limit} باشد")
+
     # MSSQL: already capped with TOP — no further action needed
-    if "TOP " in upper_sql.split("SELECT", 1)[-1][:30]:
+    if top_match:
         return cleaned
 
     # Oracle: already capped with FETCH FIRST — no further action needed
@@ -84,6 +111,11 @@ def ensure_allowed_tables(sql: str, allowed_tables: dict) -> None:
     try:
         parsed = sqlglot.parse_one(sql)
         referenced = {t.name.lower() for t in parsed.find_all(exp.Table)}
+        # CTE aliases are relations local to this query, not physical database
+        # tables. Treating them as real tables made valid, safe CTE queries fail
+        # whenever an allowlist was enabled.
+        cte_aliases = {cte.alias_or_name.lower() for cte in parsed.find_all(exp.CTE)}
+        referenced -= cte_aliases
     except Exception:  # noqa: BLE001
         return  # if sqlglot can't parse, defer to ensure_readonly_sql already done
 

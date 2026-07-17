@@ -64,11 +64,15 @@ _META_HINTS = (
 )
 
 
+def _looks_like_resource_question(text: str) -> bool:
+    return any(h in text.lower() for h in _META_HINTS)
+
+
 def _looks_like_data_question(text: str) -> bool:
     """True when the question asks for real data and a DB query must run. Used to force
     tool use so the model cannot answer from imagination."""
     t = text.lower()
-    if any(h in t for h in _META_HINTS):
+    if _looks_like_resource_question(t):
         return False
     return any(w in t for w in _DATA_SIGNAL_WORDS)
 
@@ -210,12 +214,14 @@ async def send_message(
         query_vector = None  # RAG/DB-tooling is best-effort; chat still works without it
 
     extra_context = None
+    has_retrieved_document_evidence = False
     if query_vector is not None:
         try:
             chunks = await search_similar_chunks(
                 thread.workspace_id, query_vector, db, query_text=payload.content
             )
             if chunks:
+                has_retrieved_document_evidence = True
                 parts = [f"【منبع: {c.filename}】\n{c.content}" for c in chunks]
                 extra_context = "\n\n".join(parts)
         except Exception:  # noqa: BLE001
@@ -259,6 +265,7 @@ async def send_message(
         full_content = ""
         completed = False
         audit_ids: list[uuid.UUID] = []
+        successful_query_count = 0
 
         async def link_audits(message_id: uuid.UUID) -> None:
             if not audit_ids:
@@ -277,7 +284,18 @@ async def send_message(
                 # For data questions, force the model to actually run a query this turn
                 # (tool_choice="required") so it cannot skip the DB and fabricate a table.
                 # Gracefully fall back to "auto" if the model gateway rejects forcing.
-                force_query = _looks_like_data_question(payload.content)
+                # Keyword detection catches common analytical questions. In strict
+                # workspaces, an otherwise unclassified question with no retrieved
+                # document evidence is also treated as a data question: refusing or
+                # querying is safer than answering it from the model's memory.
+                force_query = (
+                    _looks_like_data_question(payload.content)
+                    or (
+                        workspace.answer_mode == "strict"
+                        and not _looks_like_resource_question(payload.content)
+                        and not has_retrieved_document_evidence
+                    )
+                )
                 forced_supported = True
                 try:
                     content, tool_calls = await complete_chat_with_tools(
@@ -396,6 +414,7 @@ async def send_message(
                             )
                             if audit_id:
                                 audit_ids.append(audit_id)
+                                successful_query_count += 1
                             tool_result_chars_used += result_chars
                             if tool_result_chars_used >= settings.max_tool_result_chars_per_turn:
                                 budget_exhausted = True
@@ -408,11 +427,26 @@ async def send_message(
                             break  # safety cap — force final streaming answer
                     # ────────────────────────────────────────────────────────────────────
 
-                    # Stream the final answer with all tool results in context
-                    async for event in stream_chat(llm_config, messages):
-                        if event["type"] == "token":
-                            full_content += event["content"]
-                            yield _sse({"type": "token", "content": event["content"]})
+                    # If every generated query failed or was rejected, never ask
+                    # the model to "answer anyway". The database has provided no
+                    # evidence, so a deterministic refusal is the only truthful
+                    # response.
+                    if force_query and successful_query_count == 0:
+                        full_content = (
+                            "هیچ کوئری معتبری با موفقیت اجرا نشد؛ بنابراین برای جلوگیری از "
+                            "پاسخ نادرست، نتیجه‌ای اعلام نمی‌کنم. لطفاً اتصال، اسکیمای به‌روزشده "
+                            "و سطح دسترسی جدول‌ها را بررسی کنید و سؤال را دوباره بپرسید."
+                        )
+                        _CHUNK = 12
+                        for i in range(0, len(full_content), _CHUNK):
+                            yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
+                            await asyncio.sleep(0.015)
+                    else:
+                        # Stream the final answer with all tool results in context.
+                        async for event in stream_chat(llm_config, messages):
+                            if event["type"] == "token":
+                                full_content += event["content"]
+                                yield _sse({"type": "token", "content": event["content"]})
             else:
                 async for event in stream_chat(llm_config, messages):
                     if event["type"] == "token":
