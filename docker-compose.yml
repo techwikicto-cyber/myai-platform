@@ -29,6 +29,12 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
     restart: unless-stopped
     command: ["--model-id", "BAAI/bge-reranker-v2-m3"]
+    environment:
+      # Explicit base endpoint fixes TEI's "relative URL without a base" download error.
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - reranker_cache:/data
     ports:
