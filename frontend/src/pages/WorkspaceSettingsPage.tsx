@@ -196,14 +196,16 @@ export default function WorkspaceSettingsPage() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <header className="border-b border-border bg-card px-6 pt-5">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-foreground">تنظیمات {workspace?.name}</h1>
+      <header className="border-b border-border bg-card">
+        {/* Same fixed h-14 top bar as the chat header and pins panel, so switching
+            between chat / pins / settings doesn't visibly resize the header. */}
+        <div className="flex h-14 items-center justify-between px-6">
+          <h2 className="text-sm font-semibold text-foreground">تنظیمات {workspace?.name}</h2>
           <Link to={`/workspace/${workspaceId}`} className="text-sm text-primary hover:underline">
             بازگشت به گفتگو
           </Link>
         </div>
-        <div className="mt-3 flex gap-1 pb-3">
+        <div className="flex gap-1 px-6 pb-3">
           {tabs.map((t) => (
             <button
               key={t.key}

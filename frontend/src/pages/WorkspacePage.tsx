@@ -5,12 +5,16 @@ import remarkGfm from 'remark-gfm'
 import { chatApi, streamMessage } from '../api/chat'
 import { pinsApi } from '../api/pins'
 import { workspacesApi } from '../api/workspaces'
+import { documentsApi, type DocumentDto } from '../api/documents'
+import { dbConnectionsApi, type DbConnectionDto, ENGINE_LABELS } from '../api/dbConnections'
 import MessageBubble from '../components/MessageBubble'
-import { Alert } from '../components/ui'
+import { Alert, Badge } from '../components/ui'
 import {
   IconCheckSmall,
   IconChat,
   IconCopy,
+  IconDatabase,
+  IconDocument,
   IconDownload,
   IconMic,
   IconPin,
@@ -41,6 +45,9 @@ export default function WorkspacePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [pins, setPins] = useState<PinDto[]>([])
   const [showPins, setShowPins] = useState(false)
+  const [documents, setDocuments] = useState<DocumentDto[]>([])
+  const [dbConnections, setDbConnections] = useState<DbConnectionDto[]>([])
+  const [showSources, setShowSources] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -59,6 +66,15 @@ export default function WorkspacePage() {
   useEffect(() => {
     if (!workspaceId) return
     pinsApi.list(workspaceId).then(setPins).catch(() => {})
+  }, [workspaceId])
+
+  // Load connected sources (documents + databases) so the sidebar can show exactly
+  // what this workspace can answer from — same idea as AnythingLLM's always-visible
+  // source list, so users never have to ask the model what's connected.
+  useEffect(() => {
+    if (!workspaceId) return
+    documentsApi.list(workspaceId).then(setDocuments).catch(() => {})
+    dbConnectionsApi.list(workspaceId).then(setDbConnections).catch(() => {})
   }, [workspaceId])
 
   // Load or initialize thread when workspaceId or threadId changes
@@ -234,7 +250,24 @@ export default function WorkspacePage() {
         <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowPins((v) => !v)}
+            onClick={() => {
+              setShowSources((v) => !v)
+              setShowPins(false)
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors ${
+              showSources
+                ? 'bg-primary-soft text-primary'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <IconDatabase />
+            منابع
+          </button>
+          <button
+            onClick={() => {
+              setShowPins((v) => !v)
+              setShowSources(false)
+            }}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors ${
               showPins
                 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
@@ -286,6 +319,79 @@ export default function WorkspacePage() {
             ))}
           </div>
         </div>
+
+        {/* Sources panel — shows exactly what this workspace can answer from, so users
+            never have to ask the model "what documents/databases do you have". */}
+        {showSources && (
+          <div className="flex w-80 shrink-0 flex-col border-r border-border bg-card">
+            <div className="flex h-14 items-center justify-between border-b border-border px-4">
+              <div className="flex items-center gap-2">
+                <IconDatabase className="text-primary" />
+                <span className="text-sm font-semibold">منابع این فضای کاری</span>
+              </div>
+              <button
+                onClick={() => setShowSources(false)}
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <IconX />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-4">
+              <div>
+                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <IconDocument className="size-3.5" />
+                  اسناد ({documents.length})
+                </h3>
+                {documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">هیچ سندی آپلود نشده است.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {documents.map((d) => (
+                      <li key={d.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                        <span className="truncate text-sm text-foreground" title={d.filename} dir="ltr">
+                          {d.filename}
+                        </span>
+                        {d.status !== 'ready' && (
+                          <Badge kind={d.status === 'failed' ? 'error' : 'warning'}>
+                            {d.status === 'failed' ? 'خطا' : d.status === 'processing' ? 'پردازش' : 'در صف'}
+                          </Badge>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <IconDatabase className="size-3.5" />
+                  دیتابیس‌ها ({dbConnections.length})
+                </h3>
+                {dbConnections.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">هیچ دیتابیسی وصل نشده است.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {dbConnections.map((c) => (
+                      <li key={c.id} className="rounded-lg bg-muted/50 px-2.5 py-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground">{c.name}</span>
+                          <Badge kind="info">{ENGINE_LABELS[c.engine]}</Badge>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {workspace?.is_manager && (
+                <Link
+                  to={`/workspace/${workspaceId}/settings`}
+                  className="block text-center text-sm text-primary hover:underline"
+                >
+                  مدیریت اسناد و اتصال‌ها
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Pins panel */}
         {showPins && (
