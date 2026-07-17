@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # re-scored by a cross-encoder before the top_k reach the prompt. Empty =
     # disabled (falls back to the RRF order), so this is fully opt-in.
     reranker_base_url: str = ""
-    reranker_model: str = ""            # optional; only needed by some rerankers
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"            # optional; only needed by some rerankers
     rerank_candidate_pool: int = 20     # how many hybrid candidates to rerank down to top_k
     reranker_timeout_seconds: int = 20
 

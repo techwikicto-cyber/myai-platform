@@ -56,6 +56,7 @@ services:
       DEFAULT_EMBEDDING_API_TYPE: openai
       DEFAULT_EMBEDDING_MODEL: BAAI/bge-m3
       RERANKER_BASE_URL: http://reranker:80
+      RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
       CORS_ORIGINS: '["*"]'
     ports:
       - "${BACKEND_PORT:-8000}:8000"
