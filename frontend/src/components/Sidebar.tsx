@@ -195,7 +195,7 @@ export default function Sidebar() {
 
           <nav className="flex flex-col gap-0.5">
             {workspaces.map((w) => (
-              <div key={w.id}>
+              <div key={w.id} className="group/ws">
                 <NavLink
                   to={`/workspace/${w.id}`}
                   end={false}
@@ -209,7 +209,20 @@ export default function Sidebar() {
                   }
                 >
                   <IconChat />
-                  <span className="truncate">{w.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                  {w.is_manager && (
+                    <span
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        navigate(`/workspace/${w.id}/settings`)
+                      }}
+                      title="تنظیمات فضای کاری"
+                      className="shrink-0 rounded p-0.5 text-sidebar-muted/60 opacity-0 transition-all hover:text-sidebar-foreground group-hover/ws:opacity-100"
+                    >
+                      <IconSettings className="size-3.5" />
+                    </span>
+                  )}
                 </NavLink>
 
                 {/* Thread list for active workspace */}

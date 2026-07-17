@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { chatApi, streamMessage } from '../api/chat'
@@ -20,7 +20,6 @@ import {
   IconPin,
   IconRedo,
   IconSend,
-  IconSettings,
   IconStop,
   IconX,
 } from '../components/icons'
@@ -247,18 +246,7 @@ export default function WorkspacePage() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
-          {workspace?.is_manager && (
-            <Link
-              to={`/workspace/${workspaceId}/settings`}
-              title="تنظیمات فضای کاری"
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <IconSettings />
-            </Link>
-          )}
-        </div>
+        <h2 className="text-sm font-semibold text-foreground">{workspace?.name}</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
