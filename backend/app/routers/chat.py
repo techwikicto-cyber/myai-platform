@@ -34,6 +34,45 @@ router = APIRouter(tags=["chat"])
 settings = get_settings()
 
 
+# Words that signal the user is asking for real data/analytics (values, aggregates,
+# rankings, lists of records). When a DB is connected and the question carries one of
+# these, we force the model to actually run query_database instead of letting it decide
+# — a weak model given the choice will often skip the query and fabricate a plausible
+# table plus a fake "executed query". Meta questions (schema/structure) and general
+# knowledge keep tool_choice="auto" so they are answered from context, not forced.
+_DATA_SIGNAL_WORDS = {
+    # aggregation / analytics
+    "میانگین", "متوسط", "مجموع", "جمع", "تعداد", "چند", "چندتا", "بیشترین", "کمترین",
+    "بالاترین", "پایین‌ترین", "برتر", "برترین", "نرخ", "درصد", "رتبه", "رتبه‌بندی",
+    "روند", "توزیع", "مقایسه", "نمودار", "آمار",
+    # list / record retrieval
+    "لیست", "فهرست", "گزارش", "کدام", "کدامند", "کدوم", "کسانی که", "مشتریانی",
+    "مشتریان", "حساب‌هایی", "حساب هایی", "رکورد",
+    # domain values present in a connected DB
+    "موجودی", "مانده", "سود", "درآمد", "هزینه", "کارمزد", "پرداخت", "تراکنش",
+    "تراکنش‌ها", "وام", "سهم", "پرتفوی", "حقوق", "فاکتور", "سفارش",
+    # english
+    "sum", "total", "average", "avg", "count", "top", "list", "report", "rate",
+    "percentage", "percent", "trend", "ranking", "highest", "lowest",
+}
+# If the question is clearly about the *structure* (schema/docs), never force a query —
+# it must be answered from the injected context.
+_META_HINTS = (
+    "چه جدول", "جدول‌هایی", "جدول هایی", "چه ستون", "ستون‌های", "ستون های", "اسکیما",
+    "ساختار دیتابیس", "ساختار جدول", "به چه دیتابیس", "چه دیتابیس", "چه اسنادی",
+    "چه سندی", "چه فایل", "چه منابع",
+)
+
+
+def _looks_like_data_question(text: str) -> bool:
+    """True when the question asks for real data and a DB query must run. Used to force
+    tool use so the model cannot answer from imagination."""
+    t = text.lower()
+    if any(h in t for h in _META_HINTS):
+        return False
+    return any(w in t for w in _DATA_SIGNAL_WORDS)
+
+
 async def get_owned_thread(
     thread_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -235,7 +274,22 @@ async def send_message(
 
         try:
             if db_tools:
-                content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
+                # For data questions, force the model to actually run a query this turn
+                # (tool_choice="required") so it cannot skip the DB and fabricate a table.
+                # Gracefully fall back to "auto" if the model gateway rejects forcing.
+                force_query = _looks_like_data_question(payload.content)
+                try:
+                    content, tool_calls = await complete_chat_with_tools(
+                        llm_config, messages, db_tools,
+                        tool_choice="required" if force_query else "auto",
+                    )
+                except Exception:  # noqa: BLE001 — gateway may not support forced tool_choice
+                    if force_query:
+                        content, tool_calls = await complete_chat_with_tools(
+                            llm_config, messages, db_tools, tool_choice="auto"
+                        )
+                    else:
+                        raise
 
                 if not tool_calls:
                     # LLM decided no DB query needed — fake-stream the already-generated

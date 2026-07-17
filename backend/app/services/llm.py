@@ -52,16 +52,18 @@ async def stream_chat(
 
 
 async def complete_chat_with_tools(
-    config: LlmConfig, messages: list[dict], tools: list[dict]
+    config: LlmConfig, messages: list[dict], tools: list[dict], tool_choice: str = "auto"
 ) -> tuple[str, list[dict]]:
     """Non-streaming call used when a workspace has DB tools available, so we can decide
     whether the model wants to call a tool before streaming the final answer to the user.
-    
-    temperature=0 ensures deterministic query generation — the same question
+
+    tool_choice="auto" lets the model decide; "required" forces it to call a tool this
+    turn (used for data questions so a weak model can't skip the query and fabricate a
+    result). temperature=0 ensures deterministic query generation — the same question
     always produces the same SQL query, yielding consistent results."""
     client = get_client(config)
     resp = await client.chat.completions.create(
-        model=config.model, messages=messages, tools=tools, tool_choice="auto",
+        model=config.model, messages=messages, tools=tools, tool_choice=tool_choice,
         stream=False, temperature=0,
     )
     message = resp.choices[0].message
