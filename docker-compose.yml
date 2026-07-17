@@ -25,6 +25,8 @@ services:
   # Cross-encoder reranker (improves RAG document precision).
   # First boot downloads the model (~600MB), so the host needs internet once;
   # the model is then cached in the named volume below across restarts.
+  # bge-reranker-v2-m3 is multilingual (good for Persian). To use a smaller,
+  # faster English-only model, change ONLY the --model-id below.
   reranker:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
     restart: unless-stopped
