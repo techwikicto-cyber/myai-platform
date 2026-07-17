@@ -278,6 +278,7 @@ async def send_message(
                 # (tool_choice="required") so it cannot skip the DB and fabricate a table.
                 # Gracefully fall back to "auto" if the model gateway rejects forcing.
                 force_query = _looks_like_data_question(payload.content)
+                forced_supported = True
                 try:
                     content, tool_calls = await complete_chat_with_tools(
                         llm_config, messages, db_tools,
@@ -285,15 +286,51 @@ async def send_message(
                     )
                 except Exception:  # noqa: BLE001 — gateway may not support forced tool_choice
                     if force_query:
+                        forced_supported = False
                         content, tool_calls = await complete_chat_with_tools(
                             llm_config, messages, db_tools, tool_choice="auto"
                         )
                     else:
                         raise
 
+                # Manual enforcement guard: if this is a data question but the model still
+                # answered without querying (weak model, or a gateway that silently ignores
+                # tool_choice="required"), insist once more with an explicit instruction.
+                # This makes correctness independent of whether the gateway honours forcing.
+                if force_query and not tool_calls:
+                    insist_messages = messages + [{
+                        "role": "system",
+                        "content": (
+                            "این یک سوال داده‌ای است و پاسخ بدون اجرای کوئری قابل قبول نیست. "
+                            "همین حالا ابزار query_database را با یک کوئری معتبر صدا بزن و فقط از "
+                            "نتیجه‌ی واقعیِ آن پاسخ بده. هیچ عدد، نام، شعبه یا ردیفی از حافظه ننویس."
+                        ),
+                    }]
+                    try:
+                        content, tool_calls = await complete_chat_with_tools(
+                            llm_config, insist_messages, db_tools,
+                            tool_choice="required" if forced_supported else "auto",
+                        )
+                    except Exception:  # noqa: BLE001
+                        content, tool_calls = await complete_chat_with_tools(
+                            llm_config, insist_messages, db_tools, tool_choice="auto"
+                        )
+                    if tool_calls:
+                        messages = insist_messages
+
                 if not tool_calls:
-                    # LLM decided no DB query needed — fake-stream the already-generated
-                    # content in small chunks for a consistent typing UX. No extra LLM call.
+                    if force_query:
+                        # A data question with no query executed: never show fabricated
+                        # numbers/tables. Be honest instead of inventing data.
+                        content = (
+                            "برای پاسخ به این سوال باید روی دیتابیس کوئری اجرا می‌شد، اما مدل زبانی "
+                            "این کار را انجام نداد. برای جلوگیری از نمایش داده‌ی نادرست، پاسخی ساخته "
+                            "نشد. لطفاً دوباره بپرس یا سوال را کمی دقیق‌تر بیان کن. اگر این مشکل تکرار "
+                            "شد، مدل زبانیِ متصل در فراخوانی ابزار (function calling) به‌خوبی پشتیبانی "
+                            "نمی‌کند و باید مدل قوی‌تری انتخاب شود."
+                        )
+                    # LLM produced a direct answer (or the honest fallback above) — fake-stream
+                    # it in small chunks for a consistent typing UX. No extra LLM call.
                     full_content = content
                     _CHUNK = 12  # characters per SSE event
                     for i in range(0, len(content), _CHUNK):
