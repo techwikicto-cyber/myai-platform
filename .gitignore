@@ -8,3 +8,7 @@ dist/
 build/
 *.log
 .DS_Store
+
+# Host-specific Docker overrides (e.g. custom DNS). Auto-loaded by `docker compose`,
+# kept out of git so the tracked docker-compose.yml never conflicts on pull.
+docker-compose.override.yml
