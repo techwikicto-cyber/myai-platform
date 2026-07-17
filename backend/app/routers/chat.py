@@ -23,7 +23,7 @@ from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, Thr
 from app.services.chat_context import build_messages
 from app.services.db_connectors import factory
 from app.services.db_chat import build_db_tools_and_context
-from app.services.db_query_tool import run_tool_call
+from app.services.db_query_tool import run_tool_call, summarize_schema
 from app.services.embeddings import embed_texts
 from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
 from app.services.memory import maybe_summarize_history
@@ -60,7 +60,8 @@ _DATA_SIGNAL_WORDS = {
 _META_HINTS = (
     "چه جدول", "جدول‌هایی", "جدول هایی", "چه ستون", "ستون‌های", "ستون های", "اسکیما",
     "ساختار دیتابیس", "ساختار جدول", "به چه دیتابیس", "چه دیتابیس", "چه اسنادی",
-    "چه سندی", "چه فایل", "چه منابع",
+    "چه سندی", "چه فایل", "چه منابع", "چه مستنداتی", "چه مستندی", "مستندات در اختیار",
+    "اسناد در اختیار", "دسترسی به چه", "چه دسترسی",
 )
 
 
@@ -75,6 +76,32 @@ def _looks_like_data_question(text: str) -> bool:
     if _looks_like_resource_question(t):
         return False
     return any(w in t for w in _DATA_SIGNAL_WORDS)
+
+
+def _build_resource_listing(ready_docs: list[Document], connections: dict[str, DbConnection]) -> str:
+    """Renders the 'what documents/databases do you have' answer directly from live rows,
+    never through the LLM. A resource question repeated in the same thread after a
+    document was deleted showed the model trusting its own earlier turn (still in raw
+    history) over a fresh system instruction saying the source was gone — a prompt
+    cannot force compliance from a weak model. This makes the one class of question with
+    an exact, structured answer immune to that failure mode: the LLM never sees this
+    question, so it never gets a chance to blend in stale history."""
+    parts: list[str] = []
+    if ready_docs:
+        doc_lines = "\n".join(f"- {d.filename}" for d in ready_docs)
+        parts.append(f"### اسناد موجود در این فضای کاری\n{doc_lines}")
+    else:
+        parts.append("### اسناد موجود در این فضای کاری\nهیچ سندی آپلود نشده است.")
+
+    if connections:
+        for name, conn in connections.items():
+            parts.append(
+                f"### اتصال دیتابیس «{name}» (نوع: {conn.engine.value})\n{summarize_schema(conn)}"
+            )
+    else:
+        parts.append("### اتصال دیتابیس\nهیچ دیتابیسی به این فضای کاری وصل نشده است.")
+
+    return "\n\n".join(parts)
 
 
 async def get_owned_thread(
@@ -243,6 +270,19 @@ async def send_message(
         )
     )
     ready_docs = list(doc_result.scalars().all())
+
+    # "What documents/databases do you have" has one exact, structured answer that lives
+    # entirely in rows we already queried. Build it here and skip the LLM for this turn
+    # entirely — a resource question repeated after a document was deleted showed the
+    # model repeating its own earlier turn (still sitting in raw history) instead of
+    # honoring a fresh system instruction that the source was gone. No prompt can
+    # guarantee a weak model won't do that again; not calling the LLM at all does.
+    resource_answer = (
+        _build_resource_listing(ready_docs, db_connections_by_name)
+        if _looks_like_resource_question(payload.content)
+        else None
+    )
+
     if ready_docs:
         doc_list = "\n".join(f"- {d.filename}" for d in ready_docs)
         doc_index = f"فایل‌های آپلود‌شده و پردازش‌شده در این فضای کاری:\n{doc_list}"
@@ -270,7 +310,10 @@ async def send_message(
     )
     extra_context = f"{extra_context}\n\n{staleness_note}" if extra_context else staleness_note
 
-    messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
+    messages = (
+        [] if resource_answer is not None
+        else build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
+    )
 
     async def event_stream():
         # The tool-retry branch replaces the message list with an augmented copy.
@@ -296,7 +339,16 @@ async def send_message(
         MAX_TOOL_ROUNDS = 5
 
         try:
-            if db_tools:
+            if resource_answer is not None:
+                # Deterministic path: never call the LLM, so it has no chance to blend
+                # in a stale document/table name from earlier in this same thread's
+                # raw history.
+                full_content = resource_answer
+                _CHUNK = 12
+                for i in range(0, len(full_content), _CHUNK):
+                    yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
+                    await asyncio.sleep(0.015)
+            elif db_tools:
                 # For data questions, force the model to actually run a query this turn
                 # (tool_choice="required") so it cannot skip the DB and fabricate a table.
                 # Gracefully fall back to "auto" if the model gateway rejects forcing.
