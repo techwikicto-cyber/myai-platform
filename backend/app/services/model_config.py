@@ -42,6 +42,20 @@ async def get_llm_config(db: AsyncSession) -> LlmConfig:
     )
 
 
+async def get_reviewer_llm_config(db: AsyncSession) -> LlmConfig | None:
+    """Optional second-opinion model for SQL query review. None when not configured —
+    empty base_url means the feature is fully opt-in, same pattern as the (removed)
+    reranker config."""
+    row = await _get_or_create_row(db)
+    if not row.reviewer_llm_base_url:
+        return None
+    return LlmConfig(
+        base_url=row.reviewer_llm_base_url,
+        api_key=decrypt_secret(row.reviewer_llm_api_key_encrypted) if row.reviewer_llm_api_key_encrypted else "",
+        model=row.reviewer_llm_model or "",
+    )
+
+
 async def get_embedding_config(db: AsyncSession) -> EmbeddingConfig:
     row = await _get_or_create_row(db)
     return EmbeddingConfig(

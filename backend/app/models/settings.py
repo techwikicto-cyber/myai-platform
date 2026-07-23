@@ -18,4 +18,10 @@ class ModelSettings(Base):
     embedding_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     embedding_api_type: Mapped[str] = mapped_column(String(20), default="tei")
     embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Optional second-opinion model that reviews generated SQL before execution (never
+    # executes/rewrites directly — only flags a concern back to the main model). Empty
+    # base_url = disabled.
+    reviewer_llm_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewer_llm_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer_llm_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

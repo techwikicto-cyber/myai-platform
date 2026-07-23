@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     db_export_row_limit: int = 500000
     db_export_timeout_seconds: int = 60
     max_tool_result_chars_per_turn: int = 8000
+    reviewer_timeout_seconds: int = 20
 
 
 @lru_cache

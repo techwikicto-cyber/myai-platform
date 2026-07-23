@@ -74,10 +74,15 @@ async def complete_chat_with_tools(
     return message.content or "", tool_calls
 
 
-async def complete_chat(config: LlmConfig, messages: list[dict]) -> str:
-    """Non-streaming helper used for internal tasks like memory summarization."""
+async def complete_chat(config: LlmConfig, messages: list[dict], temperature: float | None = None) -> str:
+    """Non-streaming helper used for internal tasks like memory summarization and SQL
+    query review. temperature=None leaves the provider default; pass 0 for tasks that
+    need deterministic, consistent output (e.g. structured JSON)."""
     client = get_client(config)
-    resp = await client.chat.completions.create(model=config.model, messages=messages, stream=False)
+    kwargs = {"model": config.model, "messages": messages, "stream": False}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    resp = await client.chat.completions.create(**kwargs)
     return resp.choices[0].message.content or ""
 
 

@@ -28,7 +28,8 @@ from app.services.db_query_tool import run_tool_call
 from app.services.embeddings import embed_texts
 from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
 from app.services.memory import maybe_summarize_history
-from app.services.model_config import get_embedding_config, get_llm_config
+from app.services.model_config import get_embedding_config, get_llm_config, get_reviewer_llm_config
+from app.services.query_review import review_sql_query
 from app.services.rag import search_similar_chunks
 
 router = APIRouter(tags=["chat"])
@@ -271,6 +272,7 @@ async def send_message(
     history = history_result.scalars().all()[:-1]  # exclude the just-added user message; passed separately
 
     llm_config = await get_llm_config(db)
+    reviewer_config = await get_reviewer_llm_config(db)
 
     history = await maybe_summarize_history(thread, history, llm_config)
     await db.commit()
@@ -518,6 +520,41 @@ async def send_message(
                                     ),
                                 })
                                 continue
+
+                            # Optional second-opinion review (best-effort): before running the
+                            # query, ask the reviewer model whether it actually answers the
+                            # user's question — catches logic errors (wrong JOIN, missing
+                            # filter, wrong aggregation) that execute successfully and so slip
+                            # past every other guard. The reviewer only ever flags a concern; it
+                            # never executes or rewrites anything, and final judgment stays with
+                            # the main model in the next round.
+                            review_concern = None
+                            if reviewer_config is not None:
+                                try:
+                                    review_args = json.loads(tc["arguments"])
+                                    review_conn = db_connections_by_name.get(review_args.get("connection_name"))
+                                    if review_conn is None and len(db_connections_by_name) == 1:
+                                        review_conn = next(iter(db_connections_by_name.values()))
+                                    if review_conn is not None and review_args.get("query"):
+                                        review_concern = await review_sql_query(
+                                            reviewer_config, payload.content, review_args["query"], review_conn,
+                                        )
+                                except Exception:  # noqa: BLE001 — review is best-effort only
+                                    review_concern = None
+
+                            if review_concern:
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "content": (
+                                        f"این کوئری هنوز اجرا نشده. یک بازبینِ جداگانه این نگرانی را "
+                                        f"مطرح کرد: «{review_concern}». با توجه به سؤال کاربر و اسکیما "
+                                        "بررسی کن که آیا این نگرانی درست است؛ اگر درست بود کوئری را "
+                                        "اصلاح و دوباره اجرا کن، در غیر این صورت با همین کوئری ادامه بده."
+                                    ),
+                                })
+                                continue
+
                             tool_result, audit_id, result_chars = await run_tool_call(
                                 db_connections_by_name, tc["arguments"],
                                 user_id=user.id, thread_id=thread.id, user_question=payload.content,

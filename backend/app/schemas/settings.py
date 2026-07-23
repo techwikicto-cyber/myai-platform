@@ -8,6 +8,9 @@ class ModelSettingsIn(BaseModel):
     embedding_base_url: str | None = None
     embedding_api_type: str = "tei"
     embedding_model: str | None = None
+    reviewer_llm_base_url: str | None = None
+    reviewer_llm_api_key: str | None = None
+    reviewer_llm_model: str | None = None
 
 
 class ModelSettingsOut(BaseModel):
@@ -17,6 +20,9 @@ class ModelSettingsOut(BaseModel):
     embedding_base_url: str | None = None
     embedding_api_type: str = "tei"
     embedding_model: str | None = None
+    reviewer_llm_base_url: str | None = None
+    reviewer_llm_model: str | None = None
+    reviewer_llm_api_key_set: bool = False
 
 
 class ConnectionTestResult(BaseModel):

@@ -36,6 +36,9 @@ export interface ModelSettingsOut {
   embedding_base_url: string | null
   embedding_api_type: string
   embedding_model: string | null
+  reviewer_llm_base_url: string | null
+  reviewer_llm_model: string | null
+  reviewer_llm_api_key_set: boolean
 }
 
 export interface ChatMessage {

@@ -8,6 +8,9 @@ export interface ModelSettingsIn {
   embedding_base_url?: string
   embedding_api_type: string
   embedding_model?: string
+  reviewer_llm_base_url?: string
+  reviewer_llm_api_key?: string
+  reviewer_llm_model?: string
 }
 
 export const settingsApi = {
@@ -18,4 +21,6 @@ export const settingsApi = {
     api.post<{ success: boolean; message: string }>('/settings/model/test-llm', payload),
   testEmbedding: (payload?: ModelSettingsIn) =>
     api.post<{ success: boolean; message: string }>('/settings/model/test-embedding', payload),
+  testReviewerLlm: (payload?: ModelSettingsIn) =>
+    api.post<{ success: boolean; message: string }>('/settings/model/test-reviewer-llm', payload),
 }

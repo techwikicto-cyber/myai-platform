@@ -103,21 +103,28 @@ def ensure_readonly_sql(sql: str, default_row_limit: int, engine: str = "") -> s
     return cleaned
 
 
+def extract_referenced_tables(sql: str) -> set[str]:
+    """AST-based table name extraction (handles CTEs, subqueries, aliases) — used both to
+    enforce the table allowlist and to build a minimal per-query schema snippet for the
+    optional reviewer LLM. Returns an empty set if the SQL can't be parsed."""
+    try:
+        parsed = sqlglot.parse_one(sql)
+        referenced = {t.name.lower() for t in parsed.find_all(exp.Table)}
+        # CTE aliases are relations local to this query, not physical database tables.
+        cte_aliases = {cte.alias_or_name.lower() for cte in parsed.find_all(exp.CTE)}
+        return referenced - cte_aliases
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def ensure_allowed_tables(sql: str, allowed_tables: dict) -> None:
     """Raises QuerySafetyError if the SQL references tables not in the allowlist.
     Uses sqlglot for reliable AST-based table extraction (handles CTEs, subqueries, aliases)."""
     if not allowed_tables:
         return  # allowlist not configured → allow everything (backward compat)
-    try:
-        parsed = sqlglot.parse_one(sql)
-        referenced = {t.name.lower() for t in parsed.find_all(exp.Table)}
-        # CTE aliases are relations local to this query, not physical database
-        # tables. Treating them as real tables made valid, safe CTE queries fail
-        # whenever an allowlist was enabled.
-        cte_aliases = {cte.alias_or_name.lower() for cte in parsed.find_all(exp.CTE)}
-        referenced -= cte_aliases
-    except Exception:  # noqa: BLE001
-        return  # if sqlglot can't parse, defer to ensure_readonly_sql already done
+    referenced = extract_referenced_tables(sql)
+    if not referenced:
+        return  # unparseable → defer to ensure_readonly_sql, already run before this
 
     allowed_lower = {k.lower() for k in allowed_tables}
     not_allowed = referenced - allowed_lower
