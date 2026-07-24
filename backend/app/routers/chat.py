@@ -82,6 +82,15 @@ def _looks_like_data_question(text: str) -> bool:
 
 _COLLATE_RE = re.compile(r'\s*COLLATE\s*"[^"]*"', re.IGNORECASE)
 
+# Above this many tables/collections, rendering full column-by-column Markdown tables
+# for every one of them produces a response of tens of thousands of characters. That
+# is not just unreadable — the frontend fake-streams every answer in small chunks, and
+# re-rendering a Markdown document that size on every chunk visibly freezes the tab
+# (this is what "قفل شدن پرامپت" turned out to be). Past this threshold, switch to a
+# compact name-only listing and say so explicitly, instead of silently dumping a wall
+# of text.
+_MAX_ITEMS_FULL_DETAIL = 20
+
 
 def _render_schema_markdown(conn: DbConnection) -> str:
     """Human-readable schema listing for the deterministic resource answer: one compact
@@ -95,10 +104,21 @@ def _render_schema_markdown(conn: DbConnection) -> str:
     allowed = conn.allowed_tables
 
     if conn.engine == DbEngine.mongodb:
+        colls = [
+            c for c in conn.schema_summary.get("collections", [])
+            if allowed is None or c["name"].lower() in {k.lower() for k in allowed}
+        ]
+        if not colls:
+            return "(کالکشنی پیدا نشد)"
+        if len(colls) > _MAX_ITEMS_FULL_DETAIL:
+            names = "\n".join(f"- `{c['name']}`" for c in colls)
+            return (
+                f"این اتصال **{len(colls)} کالکشن** دارد — برای جلوگیری از شلوغی چت، فقط نام‌ها نشان داده شد:\n\n"
+                f"{names}\n\n"
+                "برای دیدن فیلدهای یک کالکشن خاص، نامش را در سؤال بعدی بپرس."
+            )
         blocks = []
-        for coll in conn.schema_summary.get("collections", []):
-            if allowed is not None and coll["name"].lower() not in {k.lower() for k in allowed}:
-                continue
+        for coll in colls:
             allowed_cols = (allowed or {}).get(coll["name"]) or (allowed or {}).get(coll["name"].lower())
             fields = {
                 k: v for k, v in coll.get("sample_fields", {}).items()
@@ -106,22 +126,68 @@ def _render_schema_markdown(conn: DbConnection) -> str:
             }
             rows = "\n".join(f"| `{k}` | {v} |" for k, v in fields.items())
             blocks.append(f"**کالکشن `{coll['name']}`**\n\n| فیلد | نوع |\n|---|---|\n{rows}")
-        return "\n\n".join(blocks) or "(کالکشنی پیدا نشد)"
+        return "\n\n".join(blocks)
 
+    tables = [
+        t for t in conn.schema_summary.get("tables", [])
+        if allowed is None or t["name"].lower() in {k.lower() for k in allowed}
+    ]
+    if not tables:
+        return "(جدولی پیدا نشد)"
+    if len(tables) > _MAX_ITEMS_FULL_DETAIL:
+        names = "\n".join(f"- `{t['name']}`" for t in tables)
+        return (
+            f"این اتصال **{len(tables)} جدول** دارد — نمایش کامل ستون‌های همه‌شان در چت شلوغ و کند "
+            f"می‌شود، برای همین فقط نام جدول‌ها نشان داده شد:\n\n{names}\n\n"
+            "برای دیدن ستون‌های یک جدول خاص، نامش را در سؤال بعدی بپرس (مثلاً «ستون‌های جدول X چیست؟»)."
+        )
     blocks = []
-    for table in conn.schema_summary.get("tables", []):
-        if allowed is not None and table["name"].lower() not in {k.lower() for k in allowed}:
-            continue
+    for table in tables:
         allowed_cols = None
         if allowed is not None:
             allowed_cols = allowed.get(table["name"]) or allowed.get(table["name"].lower())
         cols = [c for c in table.get("columns", []) if allowed_cols is None or c["name"] in allowed_cols]
         rows = "\n".join(f"| `{c['name']}` | {_COLLATE_RE.sub('', c['type']).strip()} |" for c in cols)
         blocks.append(f"**جدول `{table['name']}`**\n\n| ستون | نوع |\n|---|---|\n{rows}")
-    return "\n\n".join(blocks) or "(جدولی پیدا نشد)"
+    return "\n\n".join(blocks)
 
 
-def _build_resource_listing(ready_docs: list[Document], connections: dict[str, DbConnection]) -> str:
+def _find_mentioned_table(question: str, connections: dict[str, DbConnection]) -> str | None:
+    """If the question names one specific table/collection (e.g. 'ستون‌های جدول Customers
+    چیست؟'), render just that one in full even when the connection has too many
+    tables for a full dump — matching what the compact-mode message tells the user
+    to do. Matches on the bare name (last segment after any database.schema.
+    qualification) so it works for multi-database connections too."""
+    q = question.lower()
+    for conn in connections.values():
+        is_mongo = conn.engine == DbEngine.mongodb
+        items = (conn.schema_summary or {}).get("collections" if is_mongo else "tables", [])
+        for item in items:
+            bare_name = item["name"].split(".")[-1].lower()
+            if bare_name and bare_name in q:
+                label = "کالکشن" if is_mongo else "جدول"
+                if is_mongo:
+                    allowed_cols = (conn.allowed_tables or {}).get(item["name"]) or (conn.allowed_tables or {}).get(item["name"].lower())
+                    fields = {
+                        k: v for k, v in item.get("sample_fields", {}).items()
+                        if conn.allowed_tables is None or allowed_cols is None or k in allowed_cols
+                    }
+                    rows = "\n".join(f"| `{k}` | {v} |" for k, v in fields.items())
+                    col_header = "فیلد"
+                else:
+                    allowed_cols = None
+                    if conn.allowed_tables is not None:
+                        allowed_cols = conn.allowed_tables.get(item["name"]) or conn.allowed_tables.get(item["name"].lower())
+                    cols = [c for c in item.get("columns", []) if allowed_cols is None or c["name"] in allowed_cols]
+                    rows = "\n".join(f"| `{c['name']}` | {_COLLATE_RE.sub('', c['type']).strip()} |" for c in cols)
+                    col_header = "ستون"
+                return f"**{label} `{item['name']}`** (اتصال «{conn.name}»)\n\n| {col_header} | نوع |\n|---|---|\n{rows}"
+    return None
+
+
+def _build_resource_listing(
+    ready_docs: list[Document], connections: dict[str, DbConnection], question: str = ""
+) -> str:
     """Renders the 'what documents/databases do you have' answer directly from live rows,
     never through the LLM. A resource question repeated in the same thread after a
     document was deleted showed the model trusting its own earlier turn (still in raw
@@ -129,6 +195,11 @@ def _build_resource_listing(ready_docs: list[Document], connections: dict[str, D
     cannot force compliance from a weak model. This makes the one class of question with
     an exact, structured answer immune to that failure mode: the LLM never sees this
     question, so it never gets a chance to blend in stale history."""
+    if connections and question:
+        focused = _find_mentioned_table(question, connections)
+        if focused is not None:
+            return focused
+
     parts: list[str] = []
     if ready_docs:
         doc_lines = "\n".join(f"- {d.filename}" for d in ready_docs)
@@ -251,6 +322,17 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _stream_chunk_params(content: str) -> tuple[int, float]:
+    """Chunk size/delay for the fake-typing effect used on non-LLM-streamed answers.
+    Scaled so a very long response (e.g. an uncapped schema dump) can never turn into
+    thousands of tiny updates — each one makes the frontend re-render the whole
+    growing Markdown string from scratch, and enough of them in a row visibly freezes
+    the tab. Caps the total number of chunks to roughly 150 regardless of length."""
+    if len(content) <= 2000:
+        return 12, 0.015
+    return max(12, len(content) // 150), 0.008
+
+
 @router.post("/api/threads/{thread_id}/messages")
 async def send_message(
     payload: MessageCreate,
@@ -322,7 +404,7 @@ async def send_message(
     # honoring a fresh system instruction that the source was gone. No prompt can
     # guarantee a weak model won't do that again; not calling the LLM at all does.
     resource_answer = (
-        _build_resource_listing(ready_docs, db_connections_by_name)
+        _build_resource_listing(ready_docs, db_connections_by_name, question=payload.content)
         if _looks_like_resource_question(payload.content)
         else None
     )
@@ -388,10 +470,10 @@ async def send_message(
                 # in a stale document/table name from earlier in this same thread's
                 # raw history.
                 full_content = resource_answer
-                _CHUNK = 12
+                _CHUNK, _DELAY = _stream_chunk_params(full_content)
                 for i in range(0, len(full_content), _CHUNK):
                     yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
-                    await asyncio.sleep(0.015)
+                    await asyncio.sleep(_DELAY)
             elif db_tools:
                 # For data questions, force the model to actually run a query this turn
                 # (tool_choice="required") so it cannot skip the DB and fabricate a table.
@@ -462,10 +544,10 @@ async def send_message(
                     # LLM produced a direct answer (or the honest fallback above) — fake-stream
                     # it in small chunks for a consistent typing UX. No extra LLM call.
                     full_content = content
-                    _CHUNK = 12  # characters per SSE event
+                    _CHUNK, _DELAY = _stream_chunk_params(content)
                     for i in range(0, len(content), _CHUNK):
                         yield _sse({"type": "token", "content": content[i : i + _CHUNK]})
-                        await asyncio.sleep(0.015)
+                        await asyncio.sleep(_DELAY)
                 else:
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
                     # Allows the LLM to run a corrective follow-up query when the first
@@ -584,10 +666,10 @@ async def send_message(
                             "پاسخ نادرست، نتیجه‌ای اعلام نمی‌کنم. لطفاً اتصال، اسکیمای به‌روزشده "
                             "و سطح دسترسی جدول‌ها را بررسی کنید و سؤال را دوباره بپرسید."
                         )
-                        _CHUNK = 12
+                        _CHUNK, _DELAY = _stream_chunk_params(full_content)
                         for i in range(0, len(full_content), _CHUNK):
                             yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
-                            await asyncio.sleep(0.015)
+                            await asyncio.sleep(_DELAY)
                     else:
                         # Stream the final answer with all tool results in context.
                         async for event in stream_chat(llm_config, messages):
@@ -610,10 +692,10 @@ async def send_message(
                     "کاری در حالت «سخت‌گیرانه» است، به‌جای حدس‌زدن پاسخی داده نمی‌شود. سند مرتبط را "
                     "آپلود کنید یا حالت پاسخ‌دهی این فضای کاری را به «باز» تغییر دهید."
                 )
-                _CHUNK = 12
+                _CHUNK, _DELAY = _stream_chunk_params(full_content)
                 for i in range(0, len(full_content), _CHUNK):
                     yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
-                    await asyncio.sleep(0.015)
+                    await asyncio.sleep(_DELAY)
             else:
                 async for event in stream_chat(llm_config, messages):
                     if event["type"] == "token":
