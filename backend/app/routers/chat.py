@@ -92,12 +92,16 @@ _COLLATE_RE = re.compile(r'\s*COLLATE\s*"[^"]*"', re.IGNORECASE)
 _MAX_ITEMS_FULL_DETAIL = 20
 
 
-def _render_schema_markdown(conn: DbConnection) -> str:
+def _render_schema_markdown(conn: DbConnection, full: bool = False) -> str:
     """Human-readable schema listing for the deterministic resource answer: one compact
     Markdown table per DB table/collection, with the COLLATE clause stripped from column
     types. summarize_schema() (db_query_tool.py) stays as-is for the LLM prompt — dense
     comma-separated text is fine for a model to parse but unreadable for a person reading
-    it directly in chat, which is what this function is for."""
+    it directly in chat, which is what this function is for.
+
+    full=True bypasses the item-count cap entirely — used for the downloadable export,
+    which is a real file the user opens outside the chat, not something fake-streamed
+    into a message bubble, so the size limit that protects the chat UI doesn't apply."""
     if not conn.schema_summary:
         return "(اسکیما هنوز استخراج نشده است — از دکمه «به‌روزرسانی اسکیما» استفاده کنید)"
 
@@ -110,12 +114,13 @@ def _render_schema_markdown(conn: DbConnection) -> str:
         ]
         if not colls:
             return "(کالکشنی پیدا نشد)"
-        if len(colls) > _MAX_ITEMS_FULL_DETAIL:
+        if not full and len(colls) > _MAX_ITEMS_FULL_DETAIL:
             names = "\n".join(f"- `{c['name']}`" for c in colls)
             return (
                 f"این اتصال **{len(colls)} کالکشن** دارد — برای جلوگیری از شلوغی چت، فقط نام‌ها نشان داده شد:\n\n"
                 f"{names}\n\n"
-                "برای دیدن فیلدهای یک کالکشن خاص، نامش را در سؤال بعدی بپرس."
+                "برای دیدن فیلدهای یک کالکشن خاص، نامش را در سؤال بعدی بپرس. برای فهرست کامل با همه‌ی "
+                "فیلدها، پنل «منابع» کنار چت را باز کن یا از همان‌جا فایل کامل را دانلود کن."
             )
         blocks = []
         for coll in colls:
@@ -134,12 +139,13 @@ def _render_schema_markdown(conn: DbConnection) -> str:
     ]
     if not tables:
         return "(جدولی پیدا نشد)"
-    if len(tables) > _MAX_ITEMS_FULL_DETAIL:
+    if not full and len(tables) > _MAX_ITEMS_FULL_DETAIL:
         names = "\n".join(f"- `{t['name']}`" for t in tables)
         return (
             f"این اتصال **{len(tables)} جدول** دارد — نمایش کامل ستون‌های همه‌شان در چت شلوغ و کند "
             f"می‌شود، برای همین فقط نام جدول‌ها نشان داده شد:\n\n{names}\n\n"
-            "برای دیدن ستون‌های یک جدول خاص، نامش را در سؤال بعدی بپرس (مثلاً «ستون‌های جدول X چیست؟»)."
+            "برای دیدن ستون‌های یک جدول خاص، نامش را در سؤال بعدی بپرس (مثلاً «ستون‌های جدول X چیست؟»). "
+            "برای فهرست کامل با همه‌ی ستون‌ها، پنل «منابع» کنار چت را باز کن یا از همان‌جا فایل کامل را دانلود کن."
         )
     blocks = []
     for table in tables:
@@ -186,7 +192,7 @@ def _find_mentioned_table(question: str, connections: dict[str, DbConnection]) -
 
 
 def _build_resource_listing(
-    ready_docs: list[Document], connections: dict[str, DbConnection], question: str = ""
+    ready_docs: list[Document], connections: dict[str, DbConnection], question: str = "", full: bool = False
 ) -> str:
     """Renders the 'what documents/databases do you have' answer directly from live rows,
     never through the LLM. A resource question repeated in the same thread after a
@@ -194,8 +200,12 @@ def _build_resource_listing(
     history) over a fresh system instruction saying the source was gone — a prompt
     cannot force compliance from a weak model. This makes the one class of question with
     an exact, structured answer immune to that failure mode: the LLM never sees this
-    question, so it never gets a chance to blend in stale history."""
-    if connections and question:
+    question, so it never gets a chance to blend in stale history.
+
+    full=True is for the downloadable export endpoint: bypasses per-connection item caps
+    and the single-table shortcut, since a file the user opens outside the chat has none
+    of the chat-rendering size concerns."""
+    if not full and connections and question:
         focused = _find_mentioned_table(question, connections)
         if focused is not None:
             return focused
@@ -210,7 +220,7 @@ def _build_resource_listing(
     if connections:
         for name, conn in connections.items():
             parts.append(
-                f"### اتصال دیتابیس «{name}» (نوع: {conn.engine.value})\n\n{_render_schema_markdown(conn)}"
+                f"### اتصال دیتابیس «{name}» (نوع: {conn.engine.value})\n\n{_render_schema_markdown(conn, full=full)}"
             )
     else:
         parts.append("### اتصال دیتابیس\nهیچ دیتابیسی به این فضای کاری وصل نشده است.")
@@ -867,4 +877,35 @@ async def export_query_result(
         content=csv_bytes,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/api/workspaces/{workspace_id}/resources/export")
+async def export_resources(
+    workspace_id: uuid.UUID,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full, uncapped documents+schema listing as a downloadable Markdown file \u2014 the
+    counterpart to the in-chat resource answer, which caps large connections (200+
+    tables) to keep the chat itself readable and fast. This is what the compact-mode
+    message points to when it says "\u062f\u0627\u0646\u0644\u0648\u062f \u0641\u0627\u06cc\u0644 \u06a9\u0627\u0645\u0644"."""
+    doc_result = await db.execute(
+        select(Document).where(
+            Document.workspace_id == workspace_id,
+            Document.kind == DocumentKind.workspace_doc,
+            Document.status == "ready",
+        )
+    )
+    ready_docs = list(doc_result.scalars().all())
+
+    conn_result = await db.execute(select(DbConnection).where(DbConnection.workspace_id == workspace_id))
+    connections = {c.name: c for c in conn_result.scalars().all()}
+
+    content = _build_resource_listing(ready_docs, connections, full=True)
+    md_bytes = ("\ufeff" + content).encode("utf-8")
+    return Response(
+        content=md_bytes,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="resources.md"'},
     )

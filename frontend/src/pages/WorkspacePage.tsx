@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import clsx from 'clsx'
+import { API_BASE } from '../api/client'
 import { chatApi, streamMessage } from '../api/chat'
 import { pinsApi } from '../api/pins'
 import { workspacesApi } from '../api/workspaces'
@@ -12,6 +14,7 @@ import { Alert, Badge } from '../components/ui'
 import {
   IconCheckSmall,
   IconChat,
+  IconChevronDown,
   IconCopy,
   IconDatabase,
   IconDocument,
@@ -27,6 +30,7 @@ import { parseMarkdownTable, tableToCSV } from '../components/MiniChart'
 import { copyText } from '../lib/clipboard'
 import { useThreadStore } from '../store/threads'
 import { useChatStore } from '../store/chat'
+import { useAuthStore } from '../store/auth'
 import type { ChatMessage, PinDto, Workspace } from '../types'
 
 export default function WorkspacePage() {
@@ -203,6 +207,22 @@ export default function WorkspacePage() {
     abortControllerRef.current?.abort()
   }
 
+  async function handleExportResources() {
+    if (!workspaceId) return
+    const token = useAuthStore.getState().token
+    const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/resources/export`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'resources.md'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleEdit = useCallback((msgId: string, content: string) => {
     if (!threadId) return
     setMessages(threadId, (prev) => {
@@ -361,16 +381,20 @@ export default function WorkspacePage() {
                 ) : (
                   <ul className="space-y-1.5">
                     {dbConnections.map((c) => (
-                      <li key={c.id} className="rounded-lg bg-muted/50 px-2.5 py-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-foreground">{c.name}</span>
-                          <Badge kind="info">{ENGINE_LABELS[c.engine]}</Badge>
-                        </div>
-                      </li>
+                      <DbConnectionExplorerItem key={c.id} connection={c} />
                     ))}
                   </ul>
                 )}
               </div>
+            </div>
+            <div className="border-t border-border p-3">
+              <button
+                onClick={handleExportResources}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <IconDownload className="size-3.5" />
+                دانلود فهرست کامل (Markdown)
+              </button>
             </div>
           </div>
         )}
@@ -472,6 +496,86 @@ export default function WorkspacePage() {
           </form>
         </div>
       </div>
+    </div>
+  )
+}
+
+type SchemaColumn = { name: string; type: string }
+type SchemaTable = { name: string; columns?: SchemaColumn[] }
+type SchemaCollection = { name: string; sample_fields?: Record<string, string> }
+type SchemaSummary = { tables?: SchemaTable[]; collections?: SchemaCollection[] } | null
+
+function DbConnectionExplorerItem({ connection }: { connection: DbConnectionDto }) {
+  const [expanded, setExpanded] = useState(false)
+  const summary = connection.schema_summary as SchemaSummary
+  const isCollections = !summary?.tables && !!summary?.collections
+  const items = summary?.tables ?? summary?.collections ?? []
+
+  return (
+    <li className="rounded-lg bg-muted/50">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-right"
+      >
+        <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-foreground">
+          <IconChevronDown className={clsx('size-3 shrink-0 transition-transform', !expanded && '-rotate-90')} />
+          <span className="truncate">{connection.name}</span>
+        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {items.length > 0 && (
+            <span className="text-[10px] text-muted-foreground">
+              {items.length} {isCollections ? 'مجموعه' : 'جدول'}
+            </span>
+          )}
+          <Badge kind="info">{ENGINE_LABELS[connection.engine]}</Badge>
+        </div>
+      </button>
+      {expanded && (
+        <div className="space-y-0.5 border-t border-border px-2.5 py-1.5">
+          {items.length === 0 ? (
+            <p className="text-xs text-muted-foreground">اسکیمایی کشف نشده است — از تنظیمات اتصال، فهرست را بروزرسانی کنید.</p>
+          ) : (
+            items.map((item) => <DbTableExplorerItem key={item.name} item={item} />)
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function DbTableExplorerItem({ item }: { item: SchemaTable | SchemaCollection }) {
+  const [open, setOpen] = useState(false)
+  const columns: SchemaColumn[] =
+    'columns' in item && item.columns
+      ? item.columns
+      : 'sample_fields' in item && item.sample_fields
+        ? Object.entries(item.sample_fields).map(([name, type]) => ({ name, type }))
+        : []
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={columns.length === 0}
+        className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent"
+      >
+        <IconChevronDown
+          className={clsx('size-2.5 shrink-0 transition-transform', (!open || columns.length === 0) && '-rotate-90', columns.length === 0 && 'opacity-30')}
+        />
+        <span className="truncate" dir="ltr" title={item.name}>
+          {item.name}
+        </span>
+      </button>
+      {open && columns.length > 0 && (
+        <ul className="mb-1 mr-4 space-y-0.5 border-r border-border pr-2">
+          {columns.map((col) => (
+            <li key={col.name} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground" dir="ltr">
+              <span className="truncate">{col.name}</span>
+              <span className="shrink-0 text-muted-foreground/70">{col.type}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
