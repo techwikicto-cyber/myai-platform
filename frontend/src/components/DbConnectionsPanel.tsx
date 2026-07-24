@@ -281,10 +281,18 @@ function DatabasesPanel({
             در دسترس مدل باشند را انتخاب کن؛ مدل می‌تواند حتی بین آن‌ها JOIN بزند.
           </p>
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={handleDiscover} disabled={discovering}>
-          {discovering && <Spinner />}
+        <button
+          type="button"
+          onClick={handleDiscover}
+          disabled={discovering}
+          className={clsx(
+            'inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted',
+            discovering && 'pointer-events-none opacity-50',
+          )}
+        >
+          {discovering ? <Spinner /> : <IconDatabase className="size-4 shrink-0" />}
           {available.length > 0 ? 'به‌روزرسانی فهرست' : 'فهرست دیتابیس‌ها'}
-        </Button>
+        </button>
       </div>
       {error && (
         <div className="mb-3">

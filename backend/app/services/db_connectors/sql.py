@@ -83,9 +83,39 @@ async def test_connection(engine: DbEngine, params: ConnectionParams, timeout: i
     return await asyncio.to_thread(_test_connection_sync, engine, params, timeout)
 
 
+def _introspect_mssql(eng: Engine, qualify_with: str | None) -> list[dict]:
+    # SQLAlchemy's inspector.get_table_names() only sees the login's *default* schema
+    # for that database — it silently returns an empty list (not an error) when the
+    # real tables live in a different schema, which is common with third-party
+    # accounting software that doesn't use dbo. INFORMATION_SCHEMA.COLUMNS is not
+    # schema-scoped like that; it lists every schema the login can see in one query,
+    # which is what actually fixed a real customer database coming back as "0 tables".
+    with eng.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE "
+            "FROM INFORMATION_SCHEMA.COLUMNS "
+            "ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
+        )).fetchall()
+    tables: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for table_schema, table_name, column_name, data_type in rows:
+        key = f"{table_schema}.{table_name}"
+        if key not in tables:
+            tables[key] = []
+            order.append(key)
+        tables[key].append({"name": column_name, "type": data_type})
+    return [
+        {"name": f"{qualify_with}.{key}" if qualify_with else key, "columns": tables[key]}
+        for key in order
+    ]
+
+
 def _introspect_one_database(engine: DbEngine, params: ConnectionParams, timeout: int, qualify_with: str | None) -> list[dict]:
     eng = _build_engine(engine, params, timeout)
     try:
+        if engine == DbEngine.mssql:
+            return _introspect_mssql(eng, qualify_with)
+
         inspector = inspect(eng)
         schema_name = inspector.default_schema_name or "dbo"
         tables = []
@@ -93,11 +123,11 @@ def _introspect_one_database(engine: DbEngine, params: ConnectionParams, timeout
             columns = [
                 {"name": col["name"], "type": str(col["type"])} for col in inspector.get_columns(table_name)
             ]
-            # In multi-database mode, qualify names as database.schema.table (MSSQL
-            # 3-part naming) so the model can write cross-database queries directly
-            # over a single connection, and every existing consumer of schema_summary
-            # (prompt formatting, allowlist matching) needs no changes — it's still
-            # just a string in the same flat "tables" list.
+            # In multi-database mode, qualify names as database.schema.table so the
+            # model can write cross-database queries directly over a single
+            # connection, and every existing consumer of schema_summary (prompt
+            # formatting, allowlist matching) needs no changes — it's still just a
+            # string in the same flat "tables" list.
             name = f"{qualify_with}.{schema_name}.{table_name}" if qualify_with else table_name
             tables.append({"name": name, "columns": columns})
         return tables
@@ -110,13 +140,18 @@ def _introspect_sync(engine: DbEngine, params: ConnectionParams, timeout: int, d
         return {"tables": _introspect_one_database(engine, params, timeout, qualify_with=None)}
 
     all_tables: list[dict] = []
+    errors: list[str] = []
     for db_name in databases:
         try:
             db_params = replace(params, database=db_name)
             all_tables.extend(_introspect_one_database(engine, db_params, timeout, qualify_with=db_name))
-        except Exception:  # noqa: BLE001 — one inaccessible database shouldn't break the rest
-            continue
-    return {"tables": all_tables}
+        except Exception as exc:  # noqa: BLE001 — one inaccessible database shouldn't block the rest,
+            # but the failure must be visible instead of silently yielding "0 tables".
+            errors.append(f"{db_name}: {exc}")
+    result: dict = {"tables": all_tables}
+    if errors:
+        result["errors"] = errors
+    return result
 
 
 async def introspect_schema(

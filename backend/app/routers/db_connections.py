@@ -238,6 +238,16 @@ async def refresh_schema(
         schema = await factory.introspect_schema(conn, timeout=settings.db_query_timeout_seconds)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"خطا در خواندن اسکیما: {exc}")
+
+    # In multi-database mode a per-database failure doesn't raise (one bad database
+    # shouldn't block the others), but if it means nothing came back at all, the user
+    # must see why instead of a silent "0 tables" — that silence was the actual
+    # symptom reported.
+    if not schema.get("tables") and schema.get("errors"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="خواندن اسکیما ناموفق بود: " + " | ".join(schema["errors"]),
+        )
     conn.schema_summary = schema
     conn.last_introspected_at = datetime.now(timezone.utc)
     await db.commit()
