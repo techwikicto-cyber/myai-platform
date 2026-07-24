@@ -26,7 +26,19 @@ async def introspect_schema(db_connection: DbConnection, timeout: int = 15) -> d
     params = _params(db_connection)
     if db_connection.engine == DbEngine.mongodb:
         return await mongo.introspect_schema(params, timeout)
-    return await sql.introspect_schema(db_connection.engine, params, timeout)
+    return await sql.introspect_schema(
+        db_connection.engine, params, timeout, databases=db_connection.selected_databases or None
+    )
+
+
+async def list_databases(db_connection: DbConnection, timeout: int = 15) -> list[str]:
+    """Enumerate the databases visible on this server (for connections where a single
+    login can see multiple databases, e.g. an MSSQL instance with one DB per fiscal
+    year). Raises for engines that don't support this (Oracle, MongoDB)."""
+    params = _params(db_connection)
+    if db_connection.engine == DbEngine.mongodb:
+        raise ValueError("MongoDB از فهرست‌کردن دیتابیس‌ها پشتیبانی نمی‌کند")
+    return await sql.list_databases(db_connection.engine, params, timeout)
 
 
 async def execute_query(

@@ -119,7 +119,13 @@ def extract_referenced_tables(sql: str) -> set[str]:
 
 def ensure_allowed_tables(sql: str, allowed_tables: dict) -> None:
     """Raises QuerySafetyError if the SQL references tables not in the allowlist.
-    Uses sqlglot for reliable AST-based table extraction (handles CTEs, subqueries, aliases)."""
+    Uses sqlglot for reliable AST-based table extraction (handles CTEs, subqueries, aliases).
+
+    Known limitation: extract_referenced_tables() only captures the bare table part of a
+    reference, so for a multi-database connection using 3-part names (database.schema.table),
+    an allowlist keyed on the full qualified name won't match. Not an issue while
+    allowed_tables is unset (None = unrestricted, the default), but worth fixing if a
+    multi-database connection later needs per-table restriction."""
     if not allowed_tables:
         return  # allowlist not configured → allow everything (backward compat)
     referenced = extract_referenced_tables(sql)

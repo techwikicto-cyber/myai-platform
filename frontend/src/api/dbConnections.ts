@@ -25,6 +25,8 @@ export interface DbConnectionDto {
   options: Record<string, unknown>
   schema_summary: Record<string, unknown> | null
   allowed_tables: Record<string, string[] | null> | null
+  available_databases: string[] | null
+  selected_databases: string[] | null
   shared_workspace_ids: string[]
   last_introspected_at: string | null
   created_at: string
@@ -58,6 +60,12 @@ export const dbConnectionsApi = {
     api.post<TestResult>(`/workspaces/${workspaceId}/db-connections/${id}/test`),
   refreshSchema: (workspaceId: string, id: string) =>
     api.post<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/refresh-schema`),
+  discoverDatabases: (workspaceId: string, id: string) =>
+    api.post<string[]>(`/workspaces/${workspaceId}/db-connections/${id}/databases`),
+  setSelectedDatabases: (workspaceId: string, id: string, selectedDatabases: string[]) =>
+    api.patch<DbConnectionDto>(`/workspaces/${workspaceId}/db-connections/${id}/selected-databases`, {
+      selected_databases: selectedDatabases,
+    }),
   remove: (workspaceId: string, id: string) => api.delete<void>(`/workspaces/${workspaceId}/db-connections/${id}`),
   listSchemaDocs: (workspaceId: string, id: string) =>
     api.get<DocumentDto[]>(`/workspaces/${workspaceId}/db-connections/${id}/schema-docs`),

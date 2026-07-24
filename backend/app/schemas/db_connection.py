@@ -32,11 +32,17 @@ class DbConnectionOut(BaseModel):
     options: dict
     schema_summary: dict | None
     allowed_tables: dict | None
+    available_databases: list[str] | None = None
+    selected_databases: list[str] | None = None
     shared_workspace_ids: list[uuid.UUID] = []
     last_introspected_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SelectedDatabasesUpdate(BaseModel):
+    selected_databases: list[str]
 
 
 class ShareUpdate(BaseModel):

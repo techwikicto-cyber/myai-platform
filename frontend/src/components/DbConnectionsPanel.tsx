@@ -216,6 +216,111 @@ function AllowlistPanel({
   )
 }
 
+const MULTI_DB_ENGINES: DbEngine[] = ['postgres', 'mysql', 'mssql']
+
+function DatabasesPanel({
+  workspaceId,
+  connection,
+  onChanged,
+}: {
+  workspaceId: string
+  connection: DbConnectionDto
+  onChanged: () => void
+}) {
+  const [discovering, setDiscovering] = useState(false)
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set(connection.selected_databases ?? []))
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  if (!MULTI_DB_ENGINES.includes(connection.engine)) return null
+
+  const available = connection.available_databases ?? []
+
+  async function handleDiscover() {
+    setDiscovering(true)
+    setError('')
+    try {
+      await dbConnectionsApi.discoverDatabases(workspaceId, connection.id)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'خطا در فهرست‌کردن دیتابیس‌ها')
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  function toggle(name: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+    setSaved(false)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await dbConnectionsApi.setSelectedDatabases(workspaceId, connection.id, [...selected])
+      setSaved(true)
+      onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-border p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">دیتابیس‌های این سرور</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            اگر این سرور چند دیتابیس دارد (مثلاً یک دیتابیس برای هر سال مالی)، دیتابیس‌هایی که می‌خواهی
+            در دسترس مدل باشند را انتخاب کن؛ مدل می‌تواند حتی بین آن‌ها JOIN بزند.
+          </p>
+        </div>
+        <Button type="button" variant="secondary" size="sm" onClick={handleDiscover} disabled={discovering}>
+          {discovering && <Spinner />}
+          {available.length > 0 ? 'به‌روزرسانی فهرست' : 'فهرست دیتابیس‌ها'}
+        </Button>
+      </div>
+      {error && (
+        <div className="mb-3">
+          <Alert kind="error">{error}</Alert>
+        </div>
+      )}
+      {available.length > 0 && (
+        <>
+          <div className="max-h-48 overflow-y-auto rounded-lg bg-muted/40 p-3">
+            {available.map((name) => (
+              <label key={name} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-foreground" dir="ltr">
+                <input
+                  type="checkbox"
+                  checked={selected.has(name)}
+                  onChange={() => toggle(name)}
+                  className="accent-primary"
+                />
+                {name}
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving && <Spinner />}
+              {saved ? '✓ ذخیره شد' : 'ذخیره انتخاب'}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              بعد از ذخیره، دکمه «به‌روزرسانی اسکیما» را بزن تا جدول‌های دیتابیس‌های انتخابی خوانده شوند.
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function ConnectionCard({
   workspaceId,
   connection,
@@ -310,7 +415,10 @@ function ConnectionCard({
               <Badge kind="muted">{ENGINE_LABELS[connection.engine]}</Badge>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground" dir="ltr">
-              {connection.host}:{connection.port}/{connection.database}
+              {connection.host}:{connection.port}
+              {connection.selected_databases && connection.selected_databases.length > 0
+                ? ` (${connection.selected_databases.length} دیتابیس)`
+                : `/${connection.database}`}
             </p>
           </div>
         </div>
@@ -408,6 +516,7 @@ function ConnectionCard({
         )}
       </div>
 
+      <DatabasesPanel workspaceId={workspaceId} connection={connection} onChanged={onChanged} />
       <AllowlistPanel workspaceId={workspaceId} connection={connection} onChanged={onChanged} />
     </Card>
   )

@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
@@ -7,6 +8,19 @@ from app.models.db_connection import DbEngine
 from app.services.db_connectors import engine_cache
 from app.services.db_connectors.base import ConnectionParams, QueryResult
 from app.services.query_safety import ensure_readonly_sql
+
+# Server-level catalog queries to enumerate the databases a login can see, excluding
+# built-in system databases. Only engines where "one server, many databases" is a real,
+# common topology (MSSQL instances hosting one DB per fiscal year is the motivating case)
+# are supported; Oracle's service/schema model and MongoDB's own connector don't fit this.
+_LIST_DATABASES_SQL = {
+    DbEngine.mssql: "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name",
+    DbEngine.postgres: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
+    DbEngine.mysql: "SHOW DATABASES",
+}
+_SYSTEM_DBS_TO_EXCLUDE = {
+    DbEngine.mysql: {"information_schema", "mysql", "performance_schema", "sys"},
+}
 
 _DRIVER_BY_ENGINE = {
     DbEngine.postgres: "postgresql+psycopg",
@@ -69,24 +83,63 @@ async def test_connection(engine: DbEngine, params: ConnectionParams, timeout: i
     return await asyncio.to_thread(_test_connection_sync, engine, params, timeout)
 
 
-def _introspect_sync(engine: DbEngine, params: ConnectionParams, timeout: int) -> dict:
-    # Introspection also uses a temporary engine
+def _introspect_one_database(engine: DbEngine, params: ConnectionParams, timeout: int, qualify_with: str | None) -> list[dict]:
     eng = _build_engine(engine, params, timeout)
     try:
         inspector = inspect(eng)
+        schema_name = inspector.default_schema_name or "dbo"
         tables = []
         for table_name in inspector.get_table_names():
             columns = [
                 {"name": col["name"], "type": str(col["type"])} for col in inspector.get_columns(table_name)
             ]
-            tables.append({"name": table_name, "columns": columns})
-        return {"tables": tables}
+            # In multi-database mode, qualify names as database.schema.table (MSSQL
+            # 3-part naming) so the model can write cross-database queries directly
+            # over a single connection, and every existing consumer of schema_summary
+            # (prompt formatting, allowlist matching) needs no changes — it's still
+            # just a string in the same flat "tables" list.
+            name = f"{qualify_with}.{schema_name}.{table_name}" if qualify_with else table_name
+            tables.append({"name": name, "columns": columns})
+        return tables
     finally:
         eng.dispose()
 
 
-async def introspect_schema(engine: DbEngine, params: ConnectionParams, timeout: int = 15) -> dict:
-    return await asyncio.to_thread(_introspect_sync, engine, params, timeout)
+def _introspect_sync(engine: DbEngine, params: ConnectionParams, timeout: int, databases: list[str] | None = None) -> dict:
+    if not databases:
+        return {"tables": _introspect_one_database(engine, params, timeout, qualify_with=None)}
+
+    all_tables: list[dict] = []
+    for db_name in databases:
+        try:
+            db_params = replace(params, database=db_name)
+            all_tables.extend(_introspect_one_database(engine, db_params, timeout, qualify_with=db_name))
+        except Exception:  # noqa: BLE001 — one inaccessible database shouldn't break the rest
+            continue
+    return {"tables": all_tables}
+
+
+async def introspect_schema(
+    engine: DbEngine, params: ConnectionParams, timeout: int = 15, databases: list[str] | None = None
+) -> dict:
+    return await asyncio.to_thread(_introspect_sync, engine, params, timeout, databases)
+
+
+def _list_databases_sync(engine: DbEngine, params: ConnectionParams, timeout: int) -> list[str]:
+    if engine not in _LIST_DATABASES_SQL:
+        raise ValueError("فهرست دیتابیس‌ها برای این نوع موتور پشتیبانی نمی‌شود")
+    eng = _build_engine(engine, params, timeout)
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(text(_LIST_DATABASES_SQL[engine])).fetchall()
+        exclude = _SYSTEM_DBS_TO_EXCLUDE.get(engine, set())
+        return sorted({str(r[0]) for r in rows} - exclude)
+    finally:
+        eng.dispose()
+
+
+async def list_databases(engine: DbEngine, params: ConnectionParams, timeout: int = 15) -> list[str]:
+    return await asyncio.to_thread(_list_databases_sync, engine, params, timeout)
 
 
 def _execute_query_sync(

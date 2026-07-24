@@ -20,6 +20,7 @@ from app.schemas.db_connection import (
     DbConnectionCreate,
     DbConnectionOut,
     DbConnectionTestRequest,
+    SelectedDatabasesUpdate,
     SharedConnectionOut,
     ShareUpdate,
 )
@@ -73,6 +74,8 @@ def _conn_out(conn: DbConnection, shared_ids: list[uuid.UUID]) -> DbConnectionOu
         options=conn.options,
         schema_summary=conn.schema_summary,
         allowed_tables=conn.allowed_tables,
+        available_databases=conn.available_databases,
+        selected_databases=conn.selected_databases,
         shared_workspace_ids=shared_ids,
         last_introspected_at=conn.last_introspected_at,
         created_at=conn.created_at,
@@ -178,6 +181,47 @@ async def test_connection(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
     success, message = await factory.test_connection(conn, timeout=settings.db_query_timeout_seconds)
     return ConnectionTestResult(success=success, message=message)
+
+
+@router.post("/{connection_id}/databases", response_model=list[str])
+async def discover_databases(
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    user: User = Depends(require_workspace_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists the databases visible on this server (e.g. one login seeing several
+    yearly accounting databases on the same MSSQL instance) so a manager can pick
+    which ones to expose, instead of being limited to the single `database` field."""
+    conn = await db.get(DbConnection, connection_id)
+    if not conn or conn.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+    try:
+        databases = await factory.list_databases(conn, timeout=settings.db_query_timeout_seconds)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"خطا در فهرست‌کردن دیتابیس‌ها: {exc}")
+    conn.available_databases = databases
+    await db.commit()
+    return databases
+
+
+@router.patch("/{connection_id}/selected-databases", response_model=DbConnectionOut)
+async def set_selected_databases(
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    payload: SelectedDatabasesUpdate,
+    user: User = Depends(require_workspace_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await db.get(DbConnection, connection_id)
+    if not conn or conn.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+    conn.selected_databases = payload.selected_databases or None
+    await db.commit()
+    await db.refresh(conn)
+
+    shares = await _load_conn_shares(db, [conn.id])
+    return _conn_out(conn, shares.get(str(conn.id), []))
 
 
 @router.post("/{connection_id}/refresh-schema", response_model=DbConnectionOut)
