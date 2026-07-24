@@ -343,6 +343,17 @@ def _stream_chunk_params(content: str) -> tuple[int, float]:
     return max(12, len(content) // 150), 0.008
 
 
+# How often to send an SSE keep-alive comment while no real chunk is ready yet. A data
+# question can spend well over a minute with zero bytes sent to the client — the initial
+# LLM call, the insist-retry, every DB query in the multi-round tool loop, every
+# reviewer-LLM call, and every between-round LLM call all happen before anything is
+# streamed. nginx's proxy_read_timeout (idle time between reads from upstream, commonly
+# 300s but can be tuned lower) then kills the connection, which the browser reports as a
+# broken/corrupted HTTP/2 stream rather than a clean timeout error. A short SSE comment
+# line (starts with ":", which every SSE/our own parser ignores) keeps bytes flowing.
+_HEARTBEAT_INTERVAL_SECONDS = 15
+
+
 @router.post("/api/threads/{thread_id}/messages")
 async def send_message(
     payload: MessageCreate,
@@ -451,7 +462,7 @@ async def send_message(
         else build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
     )
 
-    async def event_stream():
+    async def produce(queue: asyncio.Queue) -> None:
         # The tool-retry branch replaces the message list with an augmented copy.
         # Declare the enclosing value explicitly; otherwise Python treats every
         # reference in this coroutine as a local variable and fails before the
@@ -482,7 +493,7 @@ async def send_message(
                 full_content = resource_answer
                 _CHUNK, _DELAY = _stream_chunk_params(full_content)
                 for i in range(0, len(full_content), _CHUNK):
-                    yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
+                    await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                     await asyncio.sleep(_DELAY)
             elif db_tools:
                 # For data questions, force the model to actually run a query this turn
@@ -556,7 +567,7 @@ async def send_message(
                     full_content = content
                     _CHUNK, _DELAY = _stream_chunk_params(content)
                     for i in range(0, len(content), _CHUNK):
-                        yield _sse({"type": "token", "content": content[i : i + _CHUNK]})
+                        await queue.put(_sse({"type": "token", "content": content[i : i + _CHUNK]}))
                         await asyncio.sleep(_DELAY)
                 else:
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
@@ -678,14 +689,14 @@ async def send_message(
                         )
                         _CHUNK, _DELAY = _stream_chunk_params(full_content)
                         for i in range(0, len(full_content), _CHUNK):
-                            yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
+                            await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                             await asyncio.sleep(_DELAY)
                     else:
                         # Stream the final answer with all tool results in context.
                         async for event in stream_chat(llm_config, messages):
                             if event["type"] == "token":
                                 full_content += event["content"]
-                                yield _sse({"type": "token", "content": event["content"]})
+                                await queue.put(_sse({"type": "token", "content": event["content"]}))
             elif (
                 workspace.answer_mode == "strict"
                 and not has_retrieved_document_evidence
@@ -704,13 +715,13 @@ async def send_message(
                 )
                 _CHUNK, _DELAY = _stream_chunk_params(full_content)
                 for i in range(0, len(full_content), _CHUNK):
-                    yield _sse({"type": "token", "content": full_content[i : i + _CHUNK]})
+                    await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                     await asyncio.sleep(_DELAY)
             else:
                 async for event in stream_chat(llm_config, messages):
                     if event["type"] == "token":
                         full_content += event["content"]
-                        yield _sse({"type": "token", "content": event["content"]})
+                        await queue.put(_sse({"type": "token", "content": event["content"]}))
 
             # Normal completion — save and signal done.
             assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
@@ -721,34 +732,36 @@ async def send_message(
             await db.refresh(assistant_message)
             await link_audits(assistant_message.id)
             completed = True
-            yield _sse({
+            await queue.put(_sse({
                 "type": "done",
                 "message_id": str(assistant_message.id),
                 "export_ids": [str(a) for a in audit_ids],
-            })
+            }))
 
         except LlmError as exc:
-            yield _sse({"type": "error", "message": str(exc)})
+            await queue.put(_sse({"type": "error", "message": str(exc)}))
         except Exception as exc:  # noqa: BLE001
-            yield _sse({"type": "error", "message": f"خطا در ارتباط با مدل زبانی: {exc}"})
+            await queue.put(_sse({"type": "error", "message": f"خطا در ارتباط با مدل زبانی: {exc}"}))
         finally:
-            # Client disconnected mid-stream (GeneratorExit / aclose).
-            # Save whatever was generated so far so the user sees it on return.
+            # Client disconnected mid-stream: event_stream() cancels this task, which
+            # raises CancelledError here — Python still runs this finally block, so
+            # partial content is saved exactly as when this was a plain generator
+            # receiving GeneratorExit at its current yield.
             if not completed and full_content:
                 try:
                     async with AsyncSessionLocal() as temp_db:
                         partial = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
                         temp_db.add(partial)
-                        
+
                         # Update thread title if needed
                         if thread.title == "گفتگوی جدید":
                             t = await temp_db.get(Thread, thread.id)
                             if t:
                                 t.title = payload.content[:60]
-                        
+
                         await temp_db.commit()
                         await temp_db.refresh(partial)
-                        
+
                         # Link audits if any
                         if audit_ids:
                             await temp_db.execute(
@@ -760,6 +773,30 @@ async def send_message(
                 except Exception as e:
                     import logging
                     logging.error(f"Failed to save partial message on disconnect: {e}")
+            await queue.put(None)  # sentinel: tells event_stream() no more chunks are coming
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+        producer = asyncio.create_task(produce(queue))
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL_SECONDS)
+                except asyncio.TimeoutError:
+                    # Nothing real to send yet (producer is mid-LLM-call/DB-query/reviewer-
+                    # call) — an SSE comment line keeps nginx from seeing an idle upstream.
+                    yield ": keep-alive\n\n"
+                    continue
+                if item is None:
+                    break
+                yield item
+        finally:
+            if not producer.done():
+                producer.cancel()
+                try:
+                    await producer
+                except asyncio.CancelledError:
+                    pass
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
