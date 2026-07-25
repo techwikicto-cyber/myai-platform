@@ -13,7 +13,14 @@ try:
 except Exception:  # noqa: BLE001 — tz database unavailable; fall back to system local time
     _TEHRAN_TZ = None
 
-MAX_HISTORY_TOKENS = 6000
+# DeepSeek-V4-Flash (the model this deployment currently points at) has a 1M-token
+# context window — the old 6000 was a conservative default picked without that in mind
+# and was throwing away most of a long conversation's history unnecessarily. Raised
+# ~8x, matched by a proportional bump to memory.py's summarization thresholds. Still far
+# below the model's real ceiling — system prompt, schema context (which can be large for
+# multi-database connections) and tool results all share the same budget, and a bigger
+# prompt means slower responses, so this isn't pushed to the model's actual limit.
+MAX_HISTORY_TOKENS = 50000
 
 # Role/persona used when the workspace has no custom system prompt.
 DEFAULT_SYSTEM_PROMPT = (
@@ -27,12 +34,20 @@ DEFAULT_SYSTEM_PROMPT = (
 # The policy below is deliberately evidence-first. A prompt alone cannot make an
 # LLM truthful, but it gives the execution layer an unambiguous contract to enforce:
 # document claims need a retrieved excerpt and data claims need a successful query.
+#
+# This product only ever answers from this workspace's own documents/database — never
+# from general knowledge. When a database is connected, the execution layer (chat.py)
+# always forces a choice between two tools every turn: query_database for anything
+# needing real data, or answer_without_query when it doesn't. Points ۱–۳ below describe
+# how to use that choice well; the forcing itself is structural, not prompt-dependent.
 ANSWER_POLICY = (
     "برای پاسخ‌دهی، ابتدا نوع سوال کاربر را تشخیص بده:\n"
     "۱) سوال درباره ساختار و منابع این فضای کاری (مثل «به چه دیتابیسی وصلی؟»، «چه جدول‌هایی "
-    "داری؟»، «فلان جدول چه ستون‌هایی دارد؟»، «چه اسنادی موجود است؟»): مستقیم، کامل و دوستانه از "
-    "روی بخش «منابع مرتبط» (اسکیمای دیتابیس، نام اتصال‌ها، فهرست اسناد) جواب بده. این سوال‌ها را "
-    "هرگز رد نکن — اطلاعاتش همان‌جا در اختیار توست.\n"
+    "داری؟»، «فلان جدول چه ستون‌هایی دارد؟»، «چه اسنادی موجود است؟») یا سوالی که نیاز به داده‌ی "
+    "واقعی ندارد (تعریف یک اصطلاح، ادامه‌ی تحلیلی روی نتایج قبلی همین گفتگو، گفتگوی عادی): از "
+    "ابزار answer_without_query استفاده کن و پاسخ کامل را در همان فیلد answer بنویس. این سوال‌ها "
+    "را هرگز رد نکن — اطلاعاتش همان‌جا در بخش «منابع مرتبط» (اسکیمای دیتابیس، نام اتصال‌ها، فهرست "
+    "اسناد) در اختیار توست.\n"
     "۲) سوال درباره داده‌ها و مقادیر واقعی (تعداد، جمع، میانگین، لیست رکوردها، نام مشتری، مبلغ، "
     "گزارش، نمودار): همیشه با ابزار query_database کوئری بزن و فقط از نتیجه‌ی واقعیِ همان کوئری "
     "پاسخ بده. هرگز عدد، نام یا ردیفی از خودت نساز و هیچ محاسبه‌ای را دستی انجام نده — محاسبه را با "
@@ -82,21 +97,10 @@ def build_messages(
     persona_prompt = workspace.system_prompt.strip() if workspace.system_prompt else DEFAULT_SYSTEM_PROMPT
     jalali_date = _current_jalali_date_str()
 
-    answer_mode_policy = (
-        "حالت این فضای کاری «strict» است: فقط از اسناد بازیابی‌شده، اسکیمای فعلی و نتایج ابزار "
-        "دیتابیس پاسخ بده. برای پرسش خارج از این منابع، یا وقتی شاهد کافی نیست، پاسخ قطعی نساز و "
-        "صریح بگو که شواهد کافی در منابع این فضای کاری وجود ندارد."
-        if workspace.answer_mode == "strict"
-        else
-        "حالت این فضای کاری «open» است: برای پرسش‌های خارج از منابع می‌توانی پاسخ عمومی بدهی، "
-        "اما باید روشن کنی که آن بخش از منابع فضای کاری استخراج نشده است."
-    )
-
     system_prompt = (
         f"{DEFAULT_SYSTEM_PROMPT}\n\n"
         f"{ANSWER_POLICY}\n\n"
         f"{QUERY_STANDARDS}\n\n"
-        f"{answer_mode_policy}\n\n"
         f"امروز {jalali_date} (تاریخ شمسی، به وقت ایران) است. هرگز روز هفته را حدس نزن.\n\n"
     )
 

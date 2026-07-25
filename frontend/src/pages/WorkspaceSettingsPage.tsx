@@ -12,7 +12,7 @@ import { ApiError } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useWorkspaceStore } from '../store/workspaces'
 import { useNavigate } from 'react-router-dom'
-import type { AnswerMode, User, Workspace, WorkspaceMember } from '../types'
+import type { User, Workspace, WorkspaceMember } from '../types'
 
 const statusBadge: Record<string, { kind: 'success' | 'error' | 'warning' | 'muted'; label: string }> = {
   pending: { kind: 'muted', label: 'در صف' },
@@ -38,7 +38,6 @@ export default function WorkspaceSettingsPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [name, setName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [answerMode, setAnswerMode] = useState<AnswerMode>('strict')
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
   const [documents, setDocuments] = useState<DocumentDto[]>([])
@@ -80,7 +79,6 @@ export default function WorkspaceSettingsPage() {
       setWorkspace(ws)
       setName(ws.name)
       setSystemPrompt(ws.system_prompt || '')
-      setAnswerMode(ws.answer_mode)
     })
     reloadDocuments()
     reloadMembers()
@@ -104,7 +102,7 @@ export default function WorkspaceSettingsPage() {
     setSaving(true)
     setSavedMsg('')
     try {
-      await workspacesApi.update(workspaceId, { name, system_prompt: systemPrompt, answer_mode: answerMode })
+      await workspacesApi.update(workspaceId, { name, system_prompt: systemPrompt })
       setSavedMsg('ذخیره شد')
       setTimeout(() => setSavedMsg(''), 3000)
     } finally {
@@ -243,34 +241,6 @@ export default function WorkspaceSettingsPage() {
                   placeholder="مثلا: تو دستیار پشتیبانی شرکت ما هستی. همیشه مودب و دقیق پاسخ بده…"
                   className="resize-none"
                 />
-              </Field>
-
-              <Field
-                label="حالت پاسخ‌دهی"
-                hint="سخت‌گیرانه: فقط از اسناد و دیتابیس همین فضای کاری پاسخ می‌دهد و در نبود شواهد کافی، صراحتاً می‌گوید نمی‌داند. باز: برای سوالات خارج از منابع، از دانش عمومی مدل هم کمک می‌گیرد."
-              >
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm text-foreground">
-                    <input
-                      type="radio"
-                      name="answer_mode"
-                      value="strict"
-                      checked={answerMode === 'strict'}
-                      onChange={() => setAnswerMode('strict')}
-                    />
-                    سخت‌گیرانه
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-foreground">
-                    <input
-                      type="radio"
-                      name="answer_mode"
-                      value="open"
-                      checked={answerMode === 'open'}
-                      onChange={() => setAnswerMode('open')}
-                    />
-                    باز
-                  </label>
-                </div>
               </Field>
 
               <div className="flex items-center gap-3">

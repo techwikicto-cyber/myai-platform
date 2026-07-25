@@ -2,8 +2,11 @@ from app.models.thread import Message, Thread
 from app.services.llm import LlmConfig, complete_chat
 from app.services.tokens import count_tokens
 
-SUMMARY_TRIGGER_TOKENS = 8000
-KEEP_RECENT_TOKENS = 4000
+# Scaled proportionally with chat_context.MAX_HISTORY_TOKENS (raised for
+# DeepSeek-V4-Flash's much larger real context window) — keeps the same relative
+# "trigger shortly after the per-turn budget, keep about half of it" relationship.
+SUMMARY_TRIGGER_TOKENS = 60000
+KEEP_RECENT_TOKENS = 30000
 
 SUMMARY_PROMPT = (
     "خلاصه مکالمه قبلی زیر را با پیام‌های جدید ترکیب کن و یک خلاصه فشرده و کامل از تمام نکات و "

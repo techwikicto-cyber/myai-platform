@@ -24,7 +24,7 @@ from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, Thr
 from app.services.chat_context import build_messages
 from app.services.db_connectors import factory
 from app.services.db_chat import build_db_tools_and_context
-from app.services.db_query_tool import run_tool_call
+from app.services.db_query_tool import DIRECT_ANSWER_TOOL_NAME, run_tool_call
 from app.services.embeddings import embed_texts
 from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
 from app.services.memory import maybe_summarize_history
@@ -37,28 +37,14 @@ settings = get_settings()
 
 
 # Words that signal the user is asking for real data/analytics (values, aggregates,
-# rankings, lists of records). When a DB is connected and the question carries one of
-# these, we force the model to actually run query_database instead of letting it decide
-# — a weak model given the choice will often skip the query and fabricate a plausible
-# table plus a fake "executed query". Meta questions (schema/structure) and general
-# knowledge keep tool_choice="auto" so they are answered from context, not forced.
-_DATA_SIGNAL_WORDS = {
-    # aggregation / analytics
-    "میانگین", "متوسط", "مجموع", "جمع", "تعداد", "چند", "چندتا", "بیشترین", "کمترین",
-    "بالاترین", "پایین‌ترین", "برتر", "برترین", "نرخ", "درصد", "رتبه", "رتبه‌بندی",
-    "روند", "توزیع", "مقایسه", "نمودار", "آمار",
-    # list / record retrieval
-    "لیست", "فهرست", "گزارش", "کدام", "کدامند", "کدوم", "کسانی که", "مشتریانی",
-    "مشتریان", "حساب‌هایی", "حساب هایی", "رکورد",
-    # domain values present in a connected DB
-    "موجودی", "مانده", "سود", "درآمد", "هزینه", "کارمزد", "پرداخت", "تراکنش",
-    "تراکنش‌ها", "وام", "سهم", "پرتفوی", "حقوق", "فاکتور", "سفارش",
-    # english
-    "sum", "total", "average", "avg", "count", "top", "list", "report", "rate",
-    "percentage", "percent", "trend", "ranking", "highest", "lowest",
-}
-# If the question is clearly about the *structure* (schema/docs), never force a query —
-# it must be answered from the injected context.
+# Purely for the deterministic "what documents/DBs do you have" bypass below — this is
+# unrelated to whether a query gets forced. Deciding *that* used to run on a hand-
+# maintained Persian keyword list (_DATA_SIGNAL_WORDS) that needed a patch every time a
+# new phrasing slipped through (e.g. "کدام جدول ... ذخیره می‌شود" being misread as a data
+# question). Replaced with a structural fix: whenever a DB is connected, the model is
+# always forced (tool_choice="required") to choose between query_database and the
+# answer_without_query escape hatch — it declares its own intent every turn instead of
+# us guessing from words.
 _META_HINTS = (
     "چه جدول", "جدول‌هایی", "جدول هایی", "چه ستون", "ستون‌های", "ستون های", "اسکیما",
     "ساختار دیتابیس", "ساختار جدول", "به چه دیتابیس", "چه دیتابیس", "چه اسنادی",
@@ -76,15 +62,6 @@ _META_HINTS = (
 
 def _looks_like_resource_question(text: str) -> bool:
     return any(h in text.lower() for h in _META_HINTS)
-
-
-def _looks_like_data_question(text: str) -> bool:
-    """True when the question asks for real data and a DB query must run. Used to force
-    tool use so the model cannot answer from imagination."""
-    t = text.lower()
-    if _looks_like_resource_question(t):
-        return False
-    return any(w in t for w in _DATA_SIGNAL_WORDS)
 
 
 _COLLATE_RE = re.compile(r'\s*COLLATE\s*"[^"]*"', re.IGNORECASE)
@@ -377,6 +354,25 @@ async def _forward_stream(queue: asyncio.Queue, stream) -> str:
     return full_content
 
 
+def _extract_direct_answer(tool_calls: list[dict]) -> tuple[str | None, list[dict]]:
+    """Pulls the model's answer_without_query call (if any) out of a tool_calls list,
+    returning (answer_text, remaining_tool_calls). Only the first such call is honoured
+    — the model calling it more than once, or alongside real query_database calls in the
+    same round, is already minor misbehavior we don't need to model further; the real
+    query_database calls (if any) still get to run."""
+    if not tool_calls:
+        return None, tool_calls
+    for i, tc in enumerate(tool_calls):
+        if tc["name"] == DIRECT_ANSWER_TOOL_NAME:
+            try:
+                answer = json.loads(tc["arguments"]).get("answer", "").strip()
+            except Exception:  # noqa: BLE001
+                answer = ""
+            remaining = tool_calls[:i] + tool_calls[i + 1 :]
+            return (answer or "متوجه سوال شما نشدم؛ می‌توانید کمی دقیق‌تر بپرسید؟"), remaining
+    return None, tool_calls
+
+
 # How often to send an SSE keep-alive comment while no real chunk is ready yet. A data
 # question can spend well over a minute with zero bytes sent to the client — the initial
 # LLM call, the insist-retry, every DB query in the multi-round tool loop, every
@@ -548,47 +544,37 @@ async def send_message(
                     await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                     await asyncio.sleep(_DELAY)
             elif db_tools:
-                # For data questions, force the model to actually run a query this turn
-                # (tool_choice="required") so it cannot skip the DB and fabricate a table.
-                # Gracefully fall back to "auto" if the model gateway rejects forcing.
-                # Keyword detection catches common analytical questions. In strict
-                # workspaces, an otherwise unclassified question with no retrieved
-                # document evidence is also treated as a data question: refusing or
-                # querying is safer than answering it from the model's memory.
-                force_query = (
-                    _looks_like_data_question(payload.content)
-                    or (
-                        workspace.answer_mode == "strict"
-                        and not _looks_like_resource_question(payload.content)
-                        and not has_retrieved_document_evidence
-                    )
-                )
+                # Every turn with a DB connected forces an explicit choice between the two
+                # available tools (tool_choice="required"): query_database for anything
+                # needing real data, or answer_without_query (answer embedded in its own
+                # argument) when it doesn't. The model always declares its own intent
+                # structurally — no more guessing "is this a data question" from a
+                # hand-maintained Persian keyword list that needed a patch every time a
+                # new phrasing slipped through. Falls back to "auto" if the gateway
+                # rejects forcing outright.
                 forced_supported = True
                 try:
                     content, tool_calls = await complete_chat_with_tools(
-                        llm_config, messages, db_tools,
-                        tool_choice="required" if force_query else "auto",
+                        llm_config, messages, db_tools, tool_choice="required"
                     )
                 except Exception:  # noqa: BLE001 — gateway may not support forced tool_choice
-                    if force_query:
-                        forced_supported = False
-                        content, tool_calls = await complete_chat_with_tools(
-                            llm_config, messages, db_tools, tool_choice="auto"
-                        )
-                    else:
-                        raise
+                    forced_supported = False
+                    content, tool_calls = await complete_chat_with_tools(
+                        llm_config, messages, db_tools, tool_choice="auto"
+                    )
 
-                # Manual enforcement guard: if this is a data question but the model still
-                # answered without querying (weak model, or a gateway that silently ignores
-                # tool_choice="required"), insist once more with an explicit instruction.
-                # This makes correctness independent of whether the gateway honours forcing.
-                if force_query and not tool_calls:
+                # Manual enforcement guard: called neither tool (weak model, or a gateway
+                # that silently ignores tool_choice="required"), insist once more with an
+                # explicit instruction. Makes correctness independent of whether the
+                # gateway honours forcing.
+                if not tool_calls:
                     insist_messages = messages + [{
                         "role": "system",
                         "content": (
-                            "این یک سوال داده‌ای است و پاسخ بدون اجرای کوئری قابل قبول نیست. "
-                            "همین حالا ابزار query_database را با یک کوئری معتبر صدا بزن و فقط از "
-                            "نتیجه‌ی واقعیِ آن پاسخ بده. هیچ عدد، نام، شعبه یا ردیفی از حافظه ننویس."
+                            "همین حالا باید یکی از دو ابزار را صدا بزنی: اگر پاسخ نیاز به داده‌ی "
+                            "واقعی دارد query_database را با یک کوئری معتبر صدا بزن؛ در غیر این "
+                            "صورت answer_without_query را صدا بزن و پاسخ کامل را در فیلد answer "
+                            "همان ابزار بنویس. پاسخ متنیِ خارج از این دو ابزار قابل قبول نیست."
                         ),
                     }]
                     try:
@@ -603,25 +589,36 @@ async def send_message(
                     if tool_calls:
                         messages = insist_messages
 
-                if not tool_calls:
-                    if force_query:
-                        # A data question with no query executed: never show fabricated
-                        # numbers/tables. Be honest instead of inventing data.
-                        content = (
-                            "برای پاسخ به این سوال باید روی دیتابیس کوئری اجرا می‌شد، اما مدل زبانی "
-                            "این کار را انجام نداد. برای جلوگیری از نمایش داده‌ی نادرست، پاسخی ساخته "
-                            "نشد. لطفاً دوباره بپرس یا سوال را کمی دقیق‌تر بیان کن. اگر این مشکل تکرار "
-                            "شد، مدل زبانیِ متصل در فراخوانی ابزار (function calling) به‌خوبی پشتیبانی "
-                            "نمی‌کند و باید مدل قوی‌تری انتخاب شود."
-                        )
-                    # LLM produced a direct answer (or the honest fallback above) — fake-stream
-                    # it in small chunks for a consistent typing UX. No extra LLM call.
-                    full_content = content
-                    _CHUNK, _DELAY = _stream_chunk_params(content)
-                    for i in range(0, len(content), _CHUNK):
-                        await queue.put(_sse({"type": "token", "content": content[i : i + _CHUNK]}))
+                direct_answer, tool_calls = _extract_direct_answer(tool_calls)
+
+                if direct_answer is not None and not tool_calls:
+                    # Model explicitly declared no query is needed — its answer is
+                    # already final text, so fake-stream it. No extra LLM call.
+                    full_content = direct_answer
+                    _CHUNK, _DELAY = _stream_chunk_params(full_content)
+                    for i in range(0, len(full_content), _CHUNK):
+                        await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
+                        await asyncio.sleep(_DELAY)
+                elif not tool_calls:
+                    # Forced twice, called neither tool: a genuine model/gateway
+                    # reliability failure, not a classification problem — never guess,
+                    # be honest instead of inventing data.
+                    full_content = (
+                        "مدل زبانی نتوانست تصمیم بگیرد که برای این سوال باید کوئری بزند یا مستقیم "
+                        "پاسخ بدهد. لطفاً دوباره بپرس یا سوال را کمی دقیق‌تر بیان کن. اگر این مشکل "
+                        "تکرار شد، مدل زبانیِ متصل در فراخوانی ابزار (function calling) به‌خوبی "
+                        "پشتیبانی نمی‌کند و باید مدل قوی‌تری انتخاب شود."
+                    )
+                    _CHUNK, _DELAY = _stream_chunk_params(full_content)
+                    for i in range(0, len(full_content), _CHUNK):
+                        await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                         await asyncio.sleep(_DELAY)
                 else:
+                    # A stray answer_without_query alongside real query_database calls in
+                    # the same round is discarded in favor of actually running the
+                    # queries — only a *later* round with no more real calls left sets
+                    # this again (handled below).
+                    direct_answer = None
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
                     # Allows the LLM to run a corrective follow-up query when the first
                     # result is raw/wrong (e.g. returns rows instead of aggregated values).
@@ -725,15 +722,26 @@ async def send_message(
                         # Ask the LLM: do you need another query or is the answer ready?
                         if rounds_used < MAX_TOOL_ROUNDS and not budget_exhausted:
                             content, tool_calls = await complete_chat_with_tools(llm_config, messages, db_tools)
+                            direct_answer, tool_calls = _extract_direct_answer(tool_calls)
+                            if direct_answer is not None and not tool_calls:
+                                break  # model is done and gave its answer directly
                         else:
                             break  # safety cap — force final streaming answer
                     # ────────────────────────────────────────────────────────────────────
 
-                    # If every generated query failed or was rejected, never ask
-                    # the model to "answer anyway". The database has provided no
-                    # evidence, so a deterministic refusal is the only truthful
-                    # response.
-                    if force_query and successful_query_count == 0:
+                    if direct_answer is not None and not tool_calls:
+                        # A later round explicitly declared it's done — its answer is
+                        # already final text, so fake-stream it. No extra LLM call.
+                        full_content = direct_answer
+                        _CHUNK, _DELAY = _stream_chunk_params(full_content)
+                        for i in range(0, len(full_content), _CHUNK):
+                            await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
+                            await asyncio.sleep(_DELAY)
+                    elif successful_query_count == 0:
+                        # Every generated query failed or was rejected, and the model
+                        # never explicitly declared "no query needed" either — never ask
+                        # it to "answer anyway" with no evidence. A deterministic refusal
+                        # is the only truthful response.
                         full_content = (
                             "هیچ کوئری معتبری با موفقیت اجرا نشد؛ بنابراین برای جلوگیری از "
                             "پاسخ نادرست، نتیجه‌ای اعلام نمی‌کنم. لطفاً اتصال، اسکیمای به‌روزشده "
@@ -747,8 +755,7 @@ async def send_message(
                         # Stream the final answer with all tool results in context.
                         full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
             elif (
-                workspace.answer_mode == "strict"
-                and not has_retrieved_document_evidence
+                not has_retrieved_document_evidence
                 and not _looks_like_resource_question(payload.content)
             ):
                 # No DB is connected here (db_tools is empty), so the only possible
@@ -756,11 +763,13 @@ async def send_message(
                 # makes this exact check in code — zero retrieved chunks means the LLM
                 # is never even called — rather than trusting a prompt instruction to
                 # make the model admit it doesn't know. We mirror that: a hard,
-                # deterministic refusal beats hoping a weak model stays honest.
+                # deterministic refusal beats hoping a weak model stays honest. This is
+                # now unconditional (not gated on an "answer_mode" setting) — this
+                # product only ever answers from this workspace's own documents/database.
                 full_content = (
-                    "در اسناد این فضای کاری هیچ محتوای مرتبطی با این سوال پیدا نشد. چون این فضای "
-                    "کاری در حالت «سخت‌گیرانه» است، به‌جای حدس‌زدن پاسخی داده نمی‌شود. سند مرتبط را "
-                    "آپلود کنید یا حالت پاسخ‌دهی این فضای کاری را به «باز» تغییر دهید."
+                    "در اسناد این فضای کاری هیچ محتوای مرتبطی با این سوال پیدا نشد؛ به‌جای "
+                    "حدس‌زدن، پاسخی داده نمی‌شود. لطفاً سند مرتبط را آپلود کنید یا سوال را طوری "
+                    "بپرسید که به محتوای اسناد موجود مرتبط باشد."
                 )
                 _CHUNK, _DELAY = _stream_chunk_params(full_content)
                 for i in range(0, len(full_content), _CHUNK):
