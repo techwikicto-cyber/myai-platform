@@ -36,27 +36,25 @@ router = APIRouter(tags=["chat"])
 settings = get_settings()
 
 
-# Words that signal the user is asking for real data/analytics (values, aggregates,
-# Purely for the deterministic "what documents/DBs do you have" bypass below — this is
-# unrelated to whether a query gets forced. Deciding *that* used to run on a hand-
-# maintained Persian keyword list (_DATA_SIGNAL_WORDS) that needed a patch every time a
-# new phrasing slipped through (e.g. "کدام جدول ... ذخیره می‌شود" being misread as a data
-# question). Replaced with a structural fix: whenever a DB is connected, the model is
-# always forced (tool_choice="required") to choose between query_database and the
-# answer_without_query escape hatch — it declares its own intent every turn instead of
-# us guessing from words.
+# Matches only a literal "list everything you have" question ("چه جدول‌هایی داری؟", "چه
+# اسنادی داری؟") — the one remaining deterministic, LLM-bypassing shortcut in this file.
+# Kept narrow and deliberately: for a connection with 100+ tables, having the model
+# transcribe every table name into free text is both slower and risks silently dropping
+# or misspelling names, whereas this renders the real schema rows mechanically (see
+# _build_resource_listing) with a guaranteed-accurate download link for the full list.
+#
+# This must NOT match semantic "which table means X" questions like "کدام جدول ساختار
+# حساب‌ها را نگه می‌دارد؟" — that needs actual reasoning over column names (which the
+# model already does correctly via answer_without_query, using the full schema in its
+# own context), not a dump of every table name. A previous fix conflated the two by
+# adding "کدام جدول" here to solve an unrelated problem (force-forcing a query for that
+# phrasing) — that problem no longer exists since query-vs-answer is now always an
+# explicit model decision, so "کدام جدول" et al. were removed again.
 _META_HINTS = (
     "چه جدول", "جدول‌هایی", "جدول هایی", "چه ستون", "ستون‌های", "ستون های", "اسکیما",
-    "ساختار دیتابیس", "ساختار جدول", "به چه دیتابیس", "چه دیتابیس", "چه اسنادی",
+    "ساختار دیتابیس", "به چه دیتابیس", "چه دیتابیس", "چه اسنادی",
     "چه سندی", "چه فایل", "چه منابع", "چه مستنداتی", "چه مستندی", "مستندات در اختیار",
     "اسناد در اختیار", "دسترسی به چه", "چه دسترسی",
-    # "کدام جدول ... ذخیره می‌شود" ("which table stores X") asks about schema/table
-    # *identity*, not a real data value — it's answered by reasoning over table/column
-    # names (and any schema doc), not by running a query. Without these, the generic
-    # "کدام" data-signal keyword below wrongly forced these into tool_choice="required",
-    # and since there's no sensible query that answers "which table is this", the model
-    # had nothing to call and always hit the honest-refusal instead of just answering.
-    "کدام جدول", "کدوم جدول", "کدام تیبل", "کدوم تیبل", "کدام کالکشن", "کدوم کالکشن",
 )
 
 
