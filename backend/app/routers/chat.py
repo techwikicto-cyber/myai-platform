@@ -365,13 +365,13 @@ def _parse_json_object(text: str) -> dict | None:
 
 
 _DECISION_PROMPT = (
-    "برای این پیام باید دقیقاً یکی از دو تصمیم زیر را بگیری و فقط و فقط یک شیء JSON معتبر "
-    "برگردانی — بدون هیچ متن اضافه، بدون بک‌تیک، بدون توضیح، فقط خودِ JSON:\n"
+    "فقط تصمیم بگیر، هنوز پاسخ کامل ننویس. یکی از دو شکل زیر را دقیقاً و فقط به‌صورت یک شیء JSON "
+    "معتبر برگردان — بدون هیچ متن اضافه، بدون بک‌تیک، بدون توضیح، فقط خودِ JSON:\n"
     '۱) اگر پاسخ نیاز به داده‌ی واقعی از دیتابیس دارد: '
     '{"action": "query", "connection_name": "<نام اتصال>", "query": "<متن کوئری>"}\n'
     '۲) در غیر این صورت (سوال ساختاری/مفهومی، ادامه‌ی تحلیلی روی نتایج قبلی، یا گفتگوی عادی): '
-    '{"action": "answer", "answer": "<پاسخ کامل و نهایی>"}\n'
-    "خروجی باید دقیقاً یکی از این دو شکل باشد."
+    '{"action": "answer"}\n'
+    "خروجی باید دقیقاً یکی از این دو شکل باشد و چیز دیگری نداشته باشد."
 )
 
 
@@ -558,14 +558,17 @@ async def send_message(
                     }]
                     decision = await _decide_query_or_answer(llm_config, insist_messages)
 
-                direct_answer: str | None = None
-                tool_calls: list[dict] = []
-                content = None
                 if decision and decision.get("action") == "answer":
-                    direct_answer = (
-                        str(decision.get("answer") or "").strip()
-                        or "متوجه سوال شما نشدم؛ می‌توانید کمی دقیق‌تر بپرسید؟"
-                    )
+                    # The decision step only ever carries the *decision*, never the
+                    # answer text itself — cramming a full Markdown-formatted Persian
+                    # answer (tables, code blocks, quotes, newlines) into a JSON string
+                    # value is genuinely fragile: one unescaped quote or newline breaks
+                    # the JSON, and a naive parser can then silently return a truncated
+                    # or garbled fragment instead of failing cleanly. Real streaming of
+                    # plain text sidesteps that entirely and is also better UX (true
+                    # token-by-token output instead of fake-streaming a pre-baked string).
+                    full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
+                    tool_calls: list[dict] = []
                 elif decision and decision.get("action") == "query":
                     # Seeds the existing multi-round tool-execution loop below with a
                     # synthetic tool_calls entry — everything downstream (query
@@ -583,16 +586,10 @@ async def send_message(
                             ensure_ascii=False,
                         ),
                     }]
+                else:
+                    tool_calls = []
 
-                if direct_answer is not None:
-                    # Model explicitly declared no query is needed — its answer is
-                    # already final text, so fake-stream it. No extra LLM call.
-                    full_content = direct_answer
-                    _CHUNK, _DELAY = _stream_chunk_params(full_content)
-                    for i in range(0, len(full_content), _CHUNK):
-                        await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
-                        await asyncio.sleep(_DELAY)
-                elif not tool_calls:
+                if not decision or decision.get("action") not in ("query", "answer"):
                     # Neither a valid "query" nor "answer" decision after a retry: a
                     # genuine model/gateway reliability failure, not a classification
                     # problem — never guess, be honest instead of inventing data.
@@ -606,7 +603,9 @@ async def send_message(
                     for i in range(0, len(full_content), _CHUNK):
                         await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                         await asyncio.sleep(_DELAY)
-                else:
+                elif tool_calls:
+                    content = None
+                    direct_answer = None
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
                     # Allows the LLM to run a corrective follow-up query when the first
                     # result is raw/wrong (e.g. returns rows instead of aggregated values).
