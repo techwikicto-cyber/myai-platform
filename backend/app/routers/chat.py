@@ -24,9 +24,9 @@ from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, Thr
 from app.services.chat_context import build_messages
 from app.services.db_connectors import factory
 from app.services.db_chat import build_db_tools_and_context
-from app.services.db_query_tool import DIRECT_ANSWER_TOOL_NAME, run_tool_call
+from app.services.db_query_tool import DIRECT_ANSWER_TOOL_NAME, TOOL_NAME as QUERY_TOOL_NAME, run_tool_call
 from app.services.embeddings import embed_texts
-from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
+from app.services.llm import LlmError, complete_chat, complete_chat_with_tools, stream_chat
 from app.services.memory import maybe_summarize_history
 from app.services.model_config import get_embedding_config, get_llm_config, get_reviewer_llm_config
 from app.services.query_review import review_sql_query
@@ -336,6 +336,64 @@ def _extract_direct_answer(tool_calls: list[dict]) -> tuple[str | None, list[dic
     return None, tool_calls
 
 
+def _parse_json_object(text: str) -> dict | None:
+    """Extracts and parses the first JSON object in a text response — tolerant of the
+    common ways models wrap JSON (```json fences, a sentence before/after) even when
+    explicitly told to return only JSON."""
+    text = text.strip()
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    candidate = fence_match.group(1) if fence_match else text
+    try:
+        return json.loads(candidate)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    start = candidate.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(candidate)):
+        if candidate[i] == "{":
+            depth += 1
+        elif candidate[i] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(candidate[start : i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+_DECISION_PROMPT = (
+    "برای این پیام باید دقیقاً یکی از دو تصمیم زیر را بگیری و فقط و فقط یک شیء JSON معتبر "
+    "برگردانی — بدون هیچ متن اضافه، بدون بک‌تیک، بدون توضیح، فقط خودِ JSON:\n"
+    '۱) اگر پاسخ نیاز به داده‌ی واقعی از دیتابیس دارد: '
+    '{"action": "query", "connection_name": "<نام اتصال>", "query": "<متن کوئری>"}\n'
+    '۲) در غیر این صورت (سوال ساختاری/مفهومی، ادامه‌ی تحلیلی روی نتایج قبلی، یا گفتگوی عادی): '
+    '{"action": "answer", "answer": "<پاسخ کامل و نهایی>"}\n'
+    "خروجی باید دقیقاً یکی از این دو شکل باشد."
+)
+
+
+async def _decide_query_or_answer(llm_config, messages: list[dict]) -> dict | None:
+    """The query-vs-answer decision, made via a plain prompted completion instead of
+    native tool-calling. Native tool_choice="required" is not a hard guarantee across
+    gateways — many implementations treat it as a strong bias rather than a real
+    constraint, and forcing a choice between *multiple* tools specifically is a known
+    failure mode ("tool-calling suppression" under structured-output constraints) that
+    can make some models/gateways emit no tool call at all. The two closest open-source
+    analogs to this product (Vanna, DB-GPT) don't use native tool-calling for exactly
+    this decision either — they prompt for structured text and parse it, since "write a
+    JSON object" only requires ordinary instruction-following rather than a specific,
+    sometimes-buggy tool-calling code path."""
+    decision_messages = messages + [{"role": "system", "content": _DECISION_PROMPT}]
+    try:
+        raw = await complete_chat(llm_config, decision_messages, temperature=0)
+    except Exception:  # noqa: BLE001
+        return None
+    return _parse_json_object(raw)
+
+
 # How often to send an SSE keep-alive comment while no real chunk is ready yet. A data
 # question can spend well over a minute with zero bytes sent to the client — the initial
 # LLM call, the insist-retry, every DB query in the multi-round tool loop, every
@@ -483,54 +541,50 @@ async def send_message(
 
         try:
             if db_tools:
-                # Every turn with a DB connected forces an explicit choice between the two
-                # available tools (tool_choice="required"): query_database for anything
-                # needing real data, or answer_without_query (answer embedded in its own
-                # argument) when it doesn't. The model always declares its own intent
-                # structurally — no more guessing "is this a data question" from a
-                # hand-maintained Persian keyword list that needed a patch every time a
-                # new phrasing slipped through. Falls back to "auto" if the gateway
-                # rejects forcing outright.
-                forced_supported = True
-                try:
-                    content, tool_calls = await complete_chat_with_tools(
-                        llm_config, messages, db_tools, tool_choice="required"
-                    )
-                except Exception:  # noqa: BLE001 — gateway may not support forced tool_choice
-                    forced_supported = False
-                    content, tool_calls = await complete_chat_with_tools(
-                        llm_config, messages, db_tools, tool_choice="auto"
-                    )
-
-                # Manual enforcement guard: called neither tool (weak model, or a gateway
-                # that silently ignores tool_choice="required"), insist once more with an
-                # explicit instruction. Makes correctness independent of whether the
-                # gateway honours forcing.
-                if not tool_calls:
+                # The query-vs-answer decision is made via a prompted JSON completion
+                # (_decide_query_or_answer) instead of native tool_choice-forced function
+                # calling — see that function's docstring for why. One retry with a
+                # sharper instruction if the first response isn't valid JSON in the
+                # expected shape.
+                decision = await _decide_query_or_answer(llm_config, messages)
+                if not decision or decision.get("action") not in ("query", "answer"):
                     insist_messages = messages + [{
                         "role": "system",
                         "content": (
-                            "همین حالا باید یکی از دو ابزار را صدا بزنی: اگر پاسخ نیاز به داده‌ی "
-                            "واقعی دارد query_database را با یک کوئری معتبر صدا بزن؛ در غیر این "
-                            "صورت answer_without_query را صدا بزن و پاسخ کامل را در فیلد answer "
-                            "همان ابزار بنویس. پاسخ متنیِ خارج از این دو ابزار قابل قبول نیست."
+                            "پاسخ قبلی‌ات یک شیء JSON معتبر با ساختار خواسته‌شده نبود. همین حالا "
+                            "دوباره امتحان کن و فقط و فقط یکی از دو شکل JSON خواسته‌شده را "
+                            "برگردان، بدون هیچ متن یا توضیح دیگر."
                         ),
                     }]
-                    try:
-                        content, tool_calls = await complete_chat_with_tools(
-                            llm_config, insist_messages, db_tools,
-                            tool_choice="required" if forced_supported else "auto",
-                        )
-                    except Exception:  # noqa: BLE001
-                        content, tool_calls = await complete_chat_with_tools(
-                            llm_config, insist_messages, db_tools, tool_choice="auto"
-                        )
-                    if tool_calls:
-                        messages = insist_messages
+                    decision = await _decide_query_or_answer(llm_config, insist_messages)
 
-                direct_answer, tool_calls = _extract_direct_answer(tool_calls)
+                direct_answer: str | None = None
+                tool_calls: list[dict] = []
+                content = None
+                if decision and decision.get("action") == "answer":
+                    direct_answer = (
+                        str(decision.get("answer") or "").strip()
+                        or "متوجه سوال شما نشدم؛ می‌توانید کمی دقیق‌تر بپرسید؟"
+                    )
+                elif decision and decision.get("action") == "query":
+                    # Seeds the existing multi-round tool-execution loop below with a
+                    # synthetic tool_calls entry — everything downstream (query
+                    # execution, reviewer check, budget tracking, follow-up rounds) is
+                    # unchanged and still uses real native tool-calling, which has proven
+                    # reliable when only one tool is ever offered and it isn't forced.
+                    tool_calls = [{
+                        "id": str(uuid.uuid4()),
+                        "name": QUERY_TOOL_NAME,
+                        "arguments": json.dumps(
+                            {
+                                "connection_name": decision.get("connection_name"),
+                                "query": decision.get("query"),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }]
 
-                if direct_answer is not None and not tool_calls:
+                if direct_answer is not None:
                     # Model explicitly declared no query is needed — its answer is
                     # already final text, so fake-stream it. No extra LLM call.
                     full_content = direct_answer
@@ -539,25 +593,20 @@ async def send_message(
                         await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                         await asyncio.sleep(_DELAY)
                 elif not tool_calls:
-                    # Forced twice, called neither tool: a genuine model/gateway
-                    # reliability failure, not a classification problem — never guess,
-                    # be honest instead of inventing data.
+                    # Neither a valid "query" nor "answer" decision after a retry: a
+                    # genuine model/gateway reliability failure, not a classification
+                    # problem — never guess, be honest instead of inventing data.
                     full_content = (
                         "مدل زبانی نتوانست تصمیم بگیرد که برای این سوال باید کوئری بزند یا مستقیم "
                         "پاسخ بدهد. لطفاً دوباره بپرس یا سوال را کمی دقیق‌تر بیان کن. اگر این مشکل "
-                        "تکرار شد، مدل زبانیِ متصل در فراخوانی ابزار (function calling) به‌خوبی "
-                        "پشتیبانی نمی‌کند و باید مدل قوی‌تری انتخاب شود."
+                        "تکرار شد، مدل زبانیِ متصل خروجی ساختاریافته‌ی قابل‌اعتماد تولید نمی‌کند و "
+                        "باید مدل قوی‌تری انتخاب شود."
                     )
                     _CHUNK, _DELAY = _stream_chunk_params(full_content)
                     for i in range(0, len(full_content), _CHUNK):
                         await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                         await asyncio.sleep(_DELAY)
                 else:
-                    # A stray answer_without_query alongside real query_database calls in
-                    # the same round is discarded in favor of actually running the
-                    # queries — only a *later* round with no more real calls left sets
-                    # this again (handled below).
-                    direct_answer = None
                     # ── Multi-round agentic tool-call loop ──────────────────────────────
                     # Allows the LLM to run a corrective follow-up query when the first
                     # result is raw/wrong (e.g. returns rows instead of aggregated values).
