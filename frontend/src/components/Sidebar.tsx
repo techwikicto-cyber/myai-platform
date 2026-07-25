@@ -18,6 +18,7 @@ import {
 } from './icons'
 import OwlLogo from './Logo'
 import ProfileModal from './ProfileModal'
+import { Spinner } from './ui'
 
 const roleLabels: Record<string, string> = {
   admin: 'ادمین سیستم',
@@ -33,6 +34,7 @@ export default function Sidebar() {
   const [newName, setNewName] = useState('')
   const [wsOpen, setWsOpen] = useState(true)
   const [deletingThread, setDeletingThread] = useState<string | null>(null)
+  const [creatingThread, setCreatingThread] = useState(false)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [showProfileModal, setShowProfileModal] = useState(false)
@@ -73,10 +75,15 @@ export default function Sidebar() {
   }
 
   async function handleNewThread() {
-    if (!activeWorkspaceId) return
-    const t = await chatApi.createThread(activeWorkspaceId)
-    threadStore.upsertThread(activeWorkspaceId, t)
-    navigate(`/workspace/${activeWorkspaceId}/thread/${t.id}`)
+    if (!activeWorkspaceId || creatingThread) return
+    setCreatingThread(true)
+    try {
+      const t = await chatApi.createThread(activeWorkspaceId)
+      threadStore.upsertThread(activeWorkspaceId, t)
+      navigate(`/workspace/${activeWorkspaceId}/thread/${t.id}`)
+    } finally {
+      setCreatingThread(false)
+    }
   }
 
   function startRename(t: ThreadDto, e: React.MouseEvent) {
@@ -231,9 +238,10 @@ export default function Sidebar() {
                     {/* New thread button */}
                     <button
                       onClick={handleNewThread}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                      disabled={creatingThread}
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground disabled:opacity-60"
                     >
-                      <IconPlus className="size-3" />
+                      {creatingThread ? <Spinner className="size-3" /> : <IconPlus className="size-3" />}
                       گفتگوی جدید
                     </button>
 
@@ -242,6 +250,7 @@ export default function Sidebar() {
                         key={t.id}
                         className={clsx(
                           'group flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors',
+                          deletingThread === t.id && 'pointer-events-none opacity-40',
                           activeThreadId === t.id
                             ? 'bg-sidebar-accent text-sidebar-foreground font-medium'
                             : 'text-sidebar-muted hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
@@ -303,9 +312,10 @@ export default function Sidebar() {
                   <div className="mr-3 border-r border-sidebar-border/50 pr-1">
                     <button
                       onClick={handleNewThread}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                      disabled={creatingThread}
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground disabled:opacity-60"
                     >
-                      <IconPlus className="size-3" />
+                      {creatingThread ? <Spinner className="size-3" /> : <IconPlus className="size-3" />}
                       گفتگوی جدید
                     </button>
                   </div>
