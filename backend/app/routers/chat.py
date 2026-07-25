@@ -140,58 +140,23 @@ def _render_schema_markdown(conn: DbConnection, full: bool = False) -> str:
     return "\n\n".join(blocks)
 
 
-def _find_mentioned_table(question: str, connections: dict[str, DbConnection]) -> str | None:
-    """If the question names one specific table/collection (e.g. 'ستون‌های جدول Customers
-    چیست؟'), render just that one in full even when the connection has too many
-    tables for a full dump — matching what the compact-mode message tells the user
-    to do. Matches on the bare name (last segment after any database.schema.
-    qualification) so it works for multi-database connections too."""
-    q = question.lower()
-    for conn in connections.values():
-        is_mongo = conn.engine == DbEngine.mongodb
-        items = (conn.schema_summary or {}).get("collections" if is_mongo else "tables", [])
-        for item in items:
-            bare_name = item["name"].split(".")[-1].lower()
-            if bare_name and bare_name in q:
-                label = "کالکشن" if is_mongo else "جدول"
-                if is_mongo:
-                    allowed_cols = (conn.allowed_tables or {}).get(item["name"]) or (conn.allowed_tables or {}).get(item["name"].lower())
-                    fields = {
-                        k: v for k, v in item.get("sample_fields", {}).items()
-                        if conn.allowed_tables is None or allowed_cols is None or k in allowed_cols
-                    }
-                    rows = "\n".join(f"| `{k}` | {v} |" for k, v in fields.items())
-                    col_header = "فیلد"
-                else:
-                    allowed_cols = None
-                    if conn.allowed_tables is not None:
-                        allowed_cols = conn.allowed_tables.get(item["name"]) or conn.allowed_tables.get(item["name"].lower())
-                    cols = [c for c in item.get("columns", []) if allowed_cols is None or c["name"] in allowed_cols]
-                    rows = "\n".join(f"| `{c['name']}` | {_COLLATE_RE.sub('', c['type']).strip()} |" for c in cols)
-                    col_header = "ستون"
-                return f"**{label} `{item['name']}`** (اتصال «{conn.name}»)\n\n| {col_header} | نوع |\n|---|---|\n{rows}"
-    return None
-
-
 def _build_resource_listing(
-    ready_docs: list[Document], connections: dict[str, DbConnection], question: str = "", full: bool = False
+    ready_docs: list[Document], connections: dict[str, DbConnection], full: bool = False
 ) -> str:
-    """Renders the 'what documents/databases do you have' answer directly from live rows,
-    never through the LLM. A resource question repeated in the same thread after a
-    document was deleted showed the model trusting its own earlier turn (still in raw
-    history) over a fresh system instruction saying the source was gone — a prompt
-    cannot force compliance from a weak model. This makes the one class of question with
-    an exact, structured answer immune to that failure mode: the LLM never sees this
-    question, so it never gets a chance to blend in stale history.
+    """Renders the full documents+schema listing directly from live rows. Used only by
+    the GET .../resources/export endpoint below (the "دانلود فهرست کامل" button) — a
+    deliberate file-download action, not a chat-answering shortcut. This used to also
+    intercept "what documents/databases do you have" chat questions before the LLM ever
+    saw them; that bypass was removed because it was too blunt an instrument (it also
+    caught semantic questions like "کدام جدول ساختار حساب‌ها را ذخیره می‌کند؟", returning
+    an irrelevant full dump instead of letting the model reason about it) — chat
+    questions now always go through the model with the same live document/schema data
+    injected as context, so answers stay just as grounded without a special-cased
+    interception.
 
-    full=True is for the downloadable export endpoint: bypasses per-connection item caps
-    and the single-table shortcut, since a file the user opens outside the chat has none
-    of the chat-rendering size concerns."""
-    if not full and connections and question:
-        focused = _find_mentioned_table(question, connections)
-        if focused is not None:
-            return focused
-
+    full=True (always the case for the export endpoint) bypasses per-connection item
+    caps, since a file the user opens outside the chat has none of the chat-rendering
+    size concerns."""
     parts: list[str] = []
     if ready_docs:
         doc_lines = "\n".join(f"- {d.filename}" for d in ready_docs)
@@ -463,18 +428,6 @@ async def send_message(
     # writes it actually needs, exactly like the existing disconnect-recovery path did.
     await db.close()
 
-    # "What documents/databases do you have" has one exact, structured answer that lives
-    # entirely in rows we already queried. Build it here and skip the LLM for this turn
-    # entirely — a resource question repeated after a document was deleted showed the
-    # model repeating its own earlier turn (still sitting in raw history) instead of
-    # honoring a fresh system instruction that the source was gone. No prompt can
-    # guarantee a weak model won't do that again; not calling the LLM at all does.
-    resource_answer = (
-        _build_resource_listing(ready_docs, db_connections_by_name, question=payload.content)
-        if _looks_like_resource_question(payload.content)
-        else None
-    )
-
     if ready_docs:
         doc_list = "\n".join(f"- {d.filename}" for d in ready_docs)
         doc_index = f"فایل‌های آپلود‌شده و پردازش‌شده در این فضای کاری:\n{doc_list}"
@@ -502,10 +455,7 @@ async def send_message(
     )
     extra_context = f"{extra_context}\n\n{staleness_note}" if extra_context else staleness_note
 
-    messages = (
-        [] if resource_answer is not None
-        else build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
-    )
+    messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
     async def produce(queue: asyncio.Queue) -> None:
         # The tool-retry branch replaces the message list with an augmented copy.
@@ -532,16 +482,7 @@ async def send_message(
         MAX_TOOL_ROUNDS = 5
 
         try:
-            if resource_answer is not None:
-                # Deterministic path: never call the LLM, so it has no chance to blend
-                # in a stale document/table name from earlier in this same thread's
-                # raw history.
-                full_content = resource_answer
-                _CHUNK, _DELAY = _stream_chunk_params(full_content)
-                for i in range(0, len(full_content), _CHUNK):
-                    await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
-                    await asyncio.sleep(_DELAY)
-            elif db_tools:
+            if db_tools:
                 # Every turn with a DB connected forces an explicit choice between the two
                 # available tools (tool_choice="required"): query_database for anything
                 # needing real data, or answer_without_query (answer embedded in its own
