@@ -457,6 +457,18 @@ async def send_message(
     )
     ready_docs = list(doc_result.scalars().all())
 
+    # This is the last place send_message needs the request-injected DB session. Close
+    # it explicitly here instead of letting FastAPI hold it open for the rest of the
+    # function's lifetime: for a StreamingResponse, a Depends(get_db) session normally
+    # stays checked out from the connection pool until the *entire response* finishes —
+    # which, with the SSE heartbeat now keeping slow turns alive for minutes, could hold
+    # a pool slot the whole time even though nothing below this point touches this
+    # session. A few concurrent slow turns were enough to exhaust the pool (size 5 +
+    # overflow 10) and 500 every other endpoint, including unrelated ones like login.
+    # produce() below uses its own short-lived AsyncSessionLocal() for the couple of
+    # writes it actually needs, exactly like the existing disconnect-recovery path did.
+    await db.close()
+
     # "What documents/databases do you have" has one exact, structured answer that lives
     # entirely in rows we already queried. Build it here and skip the LLM for this turn
     # entirely — a resource question repeated after a document was deleted showed the
@@ -515,12 +527,13 @@ async def send_message(
         async def link_audits(message_id: uuid.UUID) -> None:
             if not audit_ids:
                 return
-            await db.execute(
-                update(QueryAuditLog)
-                .where(QueryAuditLog.id.in_(audit_ids))
-                .values(message_id=message_id)
-            )
-            await db.commit()
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    update(QueryAuditLog)
+                    .where(QueryAuditLog.id.in_(audit_ids))
+                    .values(message_id=message_id)
+                )
+                await session.commit()
 
         MAX_TOOL_ROUNDS = 5
 
@@ -756,13 +769,19 @@ async def send_message(
             else:
                 full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
 
-            # Normal completion — save and signal done.
-            assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
-            db.add(assistant_message)
-            if thread.title == "گفتگوی جدید":
-                thread.title = payload.content[:60]
-            await db.commit()
-            await db.refresh(assistant_message)
+            # Normal completion — save and signal done. Uses its own short-lived session
+            # (the request-injected `db` was closed above) — updates the title via a
+            # direct statement rather than mutating `thread` (loaded on the now-closed
+            # session) and hoping the ORM's cross-session dirty-tracking picks it up.
+            async with AsyncSessionLocal() as session:
+                assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
+                session.add(assistant_message)
+                if thread.title == "گفتگوی جدید":
+                    new_title = payload.content[:60]
+                    thread.title = new_title
+                    await session.execute(update(Thread).where(Thread.id == thread.id).values(title=new_title))
+                await session.commit()
+                await session.refresh(assistant_message)
             await link_audits(assistant_message.id)
             completed = True
             await queue.put(_sse({
