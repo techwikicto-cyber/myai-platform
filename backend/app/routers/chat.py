@@ -64,6 +64,13 @@ _META_HINTS = (
     "ساختار دیتابیس", "ساختار جدول", "به چه دیتابیس", "چه دیتابیس", "چه اسنادی",
     "چه سندی", "چه فایل", "چه منابع", "چه مستنداتی", "چه مستندی", "مستندات در اختیار",
     "اسناد در اختیار", "دسترسی به چه", "چه دسترسی",
+    # "کدام جدول ... ذخیره می‌شود" ("which table stores X") asks about schema/table
+    # *identity*, not a real data value — it's answered by reasoning over table/column
+    # names (and any schema doc), not by running a query. Without these, the generic
+    # "کدام" data-signal keyword below wrongly forced these into tool_choice="required",
+    # and since there's no sensible query that answers "which table is this", the model
+    # had nothing to call and always hit the honest-refusal instead of just answering.
+    "کدام جدول", "کدوم جدول", "کدام تیبل", "کدوم تیبل", "کدام کالکشن", "کدوم کالکشن",
 )
 
 
