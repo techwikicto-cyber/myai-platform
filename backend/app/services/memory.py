@@ -50,6 +50,10 @@ async def maybe_summarize_history(
             ],
         )
         thread.memory_summary = new_summary.strip()
+        # Advance the cursor so the caller only fetches messages after this point next
+        # turn — otherwise the same now-summarized messages get re-fetched, re-counted,
+        # and re-summarized again on every subsequent message.
+        thread.summarized_until = to_summarize[-1].created_at
     except Exception:  # noqa: BLE001
         return history  # summarization is best-effort; fall back to unsummarized history
 

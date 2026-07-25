@@ -233,7 +233,12 @@ export default function WorkspacePage() {
     setTimeout(() => textareaRef.current?.focus(), 0)
   }, [threadId, setMessages, setInput])
 
-  async function handlePin(messageId: string, content: string) {
+  // useCallback + reading messages imperatively (not via the `messages` closure, which
+  // gets a new array on every streaming token) keeps this reference stable across a
+  // streaming response, so passing it to memoized MessageBubbles actually prevents
+  // re-rendering every other bubble in the thread on every token.
+  const handlePin = useCallback(async (messageId: string, content: string) => {
+    if (!threadId) return
     if (pinnedMessageIds.has(messageId)) {
       const pin = pins.find((p) => p.message_id === messageId)
       if (pin) {
@@ -241,18 +246,19 @@ export default function WorkspacePage() {
         setPins((prev) => prev.filter((p) => p.id !== pin.id))
       }
     } else {
-      const idx = messages.findIndex((m) => m.id === messageId)
+      const currentMessages = useChatStore.getState().messages[threadId] || []
+      const idx = currentMessages.findIndex((m) => m.id === messageId)
       let question = ''
       for (let i = idx - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          question = messages[i].content
+        if (currentMessages[i].role === 'user') {
+          question = currentMessages[i].content
           break
         }
       }
       const newPin = await pinsApi.create(messageId, question, content)
       setPins((prev) => [newPin, ...prev])
     }
-  }
+  }, [threadId, pinnedMessageIds, pins])
 
   function handleAskAgain(question: string) {
     if (threadId) {
@@ -322,7 +328,7 @@ export default function WorkspacePage() {
               <MessageBubble
                 key={m.id}
                 message={m}
-                onEdit={m.role === 'user' ? () => handleEdit(m.id, m.content) : undefined}
+                onEdit={m.role === 'user' ? handleEdit : undefined}
                 isPinned={pinnedMessageIds.has(m.id)}
                 onPin={m.role === 'assistant' ? handlePin : undefined}
               />

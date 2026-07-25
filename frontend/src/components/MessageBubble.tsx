@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -61,14 +61,14 @@ function CopyButton({
   )
 }
 
-export default function MessageBubble({
+function MessageBubble({
   message,
   onEdit,
   isPinned = false,
   onPin,
 }: {
   message: ChatMessage
-  onEdit?: () => void
+  onEdit?: (messageId: string, content: string) => void
   isPinned?: boolean
   onPin?: (messageId: string, content: string) => Promise<void>
 }) {
@@ -91,7 +91,7 @@ export default function MessageBubble({
             <CopyButton content={message.content} label="کپی سوال" />
             {onEdit && (
               <button
-                onClick={onEdit}
+                onClick={() => onEdit(message.id, message.content)}
                 title="ویرایش سوال"
                 className="rounded-md p-1.5 text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground"
               >
@@ -228,3 +228,12 @@ export default function MessageBubble({
     </div>
   )
 }
+
+// Chat threads can grow to hundreds of messages. Without this, every streaming token
+// update (setMessages creates a new array) re-renders every bubble in the list — each
+// one re-running react-markdown over unchanged content — even though .map() already
+// preserves object identity for every message except the one actually changing. memo()
+// lets that identity check actually pay off. Requires every prop passed in from
+// WorkspacePage to be referentially stable (useCallback for onEdit/onPin), otherwise
+// this comparison always fails and memo does nothing.
+export default memo(MessageBubble)

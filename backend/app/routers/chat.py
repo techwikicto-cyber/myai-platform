@@ -343,6 +343,33 @@ def _stream_chunk_params(content: str) -> tuple[int, float]:
     return max(12, len(content) // 150), 0.008
 
 
+# Real LLM streaming forwards whatever delta granularity the upstream provider sends —
+# often just a few characters per chunk. Unlike the fake-typing path above, this was
+# forwarding every single upstream delta immediately: a long real-streamed answer could
+# turn into hundreds or thousands of tiny SSE events, each one re-rendering and
+# re-parsing the whole growing Markdown string in the frontend — the same tab-freeze
+# mechanism _stream_chunk_params guards against, just left open on this path.
+_REAL_STREAM_FLUSH_CHARS = 24
+
+
+async def _forward_stream(queue: asyncio.Queue, stream) -> str:
+    """Batches token deltas from a live LLM stream into ~_REAL_STREAM_FLUSH_CHARS-sized
+    SSE chunks before pushing them to the queue. Returns the full accumulated text."""
+    full_content = ""
+    buffer = ""
+    async for event in stream:
+        if event["type"] != "token":
+            continue
+        full_content += event["content"]
+        buffer += event["content"]
+        if len(buffer) >= _REAL_STREAM_FLUSH_CHARS:
+            await queue.put(_sse({"type": "token", "content": buffer}))
+            buffer = ""
+    if buffer:
+        await queue.put(_sse({"type": "token", "content": buffer}))
+    return full_content
+
+
 # How often to send an SSE keep-alive comment while no real chunk is ready yet. A data
 # question can spend well over a minute with zero bytes sent to the client — the initial
 # LLM call, the insist-retry, every DB query in the multi-round tool loop, every
@@ -369,9 +396,14 @@ async def send_message(
     db.add(user_message)
     await db.commit()
 
-    history_result = await db.execute(
-        select(Message).where(Message.thread_id == thread.id).order_by(Message.created_at)
-    )
+    # Only fetch messages after the last summarization point (if any) instead of the
+    # whole thread every turn — once a long thread has been summarized once, this keeps
+    # both the DB fetch and maybe_summarize_history's token counting bounded to "since
+    # last summary" instead of growing (and re-summarizing) forever.
+    history_query = select(Message).where(Message.thread_id == thread.id)
+    if thread.summarized_until:
+        history_query = history_query.where(Message.created_at > thread.summarized_until)
+    history_result = await db.execute(history_query.order_by(Message.created_at))
     history = history_result.scalars().all()[:-1]  # exclude the just-added user message; passed separately
 
     llm_config = await get_llm_config(db)
@@ -693,10 +725,7 @@ async def send_message(
                             await asyncio.sleep(_DELAY)
                     else:
                         # Stream the final answer with all tool results in context.
-                        async for event in stream_chat(llm_config, messages):
-                            if event["type"] == "token":
-                                full_content += event["content"]
-                                await queue.put(_sse({"type": "token", "content": event["content"]}))
+                        full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
             elif (
                 workspace.answer_mode == "strict"
                 and not has_retrieved_document_evidence
@@ -718,10 +747,7 @@ async def send_message(
                     await queue.put(_sse({"type": "token", "content": full_content[i : i + _CHUNK]}))
                     await asyncio.sleep(_DELAY)
             else:
-                async for event in stream_chat(llm_config, messages):
-                    if event["type"] == "token":
-                        full_content += event["content"]
-                        await queue.put(_sse({"type": "token", "content": event["content"]}))
+                full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
 
             # Normal completion — save and signal done.
             assistant_message = Message(thread_id=thread.id, role=MessageRole.assistant, content=full_content)
