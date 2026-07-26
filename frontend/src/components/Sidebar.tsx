@@ -8,6 +8,7 @@ import { useThreadStore } from '../store/threads'
 import { useWorkspaceStore } from '../store/workspaces'
 import type { ThreadDto } from '../api/chat'
 import {
+  IconBook,
   IconChat,
   IconChevronDown,
   IconEdit,
@@ -231,6 +232,27 @@ export default function Sidebar() {
                     </span>
                   )}
                 </NavLink>
+
+                {/* Workspace-level destinations (Chat2DB keeps knowledge management as
+                    its own page, not a settings tab — it's day-to-day content) */}
+                {activeWorkspaceId === w.id && (
+                  <div className="mb-0.5 mt-0.5 mr-3 border-r border-sidebar-border/50 pr-1">
+                    <NavLink
+                      to={`/workspace/${w.id}/knowledge`}
+                      className={({ isActive }) =>
+                        clsx(
+                          'flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors',
+                          isActive
+                            ? 'bg-sidebar-accent font-medium text-sidebar-foreground'
+                            : 'text-sidebar-muted hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                        )
+                      }
+                    >
+                      <IconBook className="size-3" />
+                      دانش سازمانی
+                    </NavLink>
+                  </div>
+                )}
 
                 {/* Thread list for active workspace */}
                 {activeWorkspaceId === w.id && threads.length > 0 && (
