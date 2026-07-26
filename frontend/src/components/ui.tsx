@@ -109,9 +109,9 @@ export function Badge({ kind, children }: { kind: 'success' | 'error' | 'warning
   const styles = {
     success: 'bg-primary-soft text-primary',
     error: 'bg-destructive-soft text-destructive',
-    warning: 'bg-amber-50 text-warning',
+    warning: 'bg-warning-soft text-warning',
     muted: 'bg-muted text-muted-foreground',
-    info: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    info: 'bg-info-soft text-info',
   }
   return (
     <span className={clsx('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', styles[kind])}>

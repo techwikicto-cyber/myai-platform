@@ -13,7 +13,6 @@ import MessageBubble from '../components/MessageBubble'
 import { Alert, Badge } from '../components/ui'
 import {
   IconCheckSmall,
-  IconChat,
   IconChevronDown,
   IconCopy,
   IconDatabase,
@@ -23,6 +22,7 @@ import {
   IconPin,
   IconRedo,
   IconSend,
+  IconSparkles,
   IconStop,
   IconX,
 } from '../components/icons'
@@ -361,7 +361,7 @@ export default function WorkspacePage() {
             }}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors ${
               showPins
-                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                ? 'bg-warning-soft text-warning'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
@@ -382,11 +382,15 @@ export default function WorkspacePage() {
           <div className="mx-auto max-w-5xl space-y-4 px-6 py-6">
             {messages.length === 0 && !error && (
               <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-                <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">
-                  <IconChat className="size-6" />
+                <div className="flex items-center gap-2 text-primary">
+                  <IconSparkles className="size-5" />
+                  <span className="text-sm font-medium">سلام</span>
                 </div>
+                <h2 className="text-3xl font-bold text-foreground/90">
+                  آماده‌ای از داده‌هایت بپرسی؟
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این فضای کاری داده می‌شود.
+                  پاسخ‌ها بر اساس اسناد و دیتابیس‌های همین فضای کاری ساخته می‌شوند.
                 </p>
                 {/* Chat2DB-style starter prompts: with a large schema users often don't
                     know where to begin, and a bad first question wastes a slow turn. */}
@@ -561,7 +565,7 @@ export default function WorkspacePage() {
                   }
                 }}
                 rows={1}
-                placeholder="پیام خود را بنویسید…"
+                placeholder="هر سؤالی از داده‌هایت بپرس — با @ می‌توانی جدول مشخص کنی"
                 className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
               />
               <button
