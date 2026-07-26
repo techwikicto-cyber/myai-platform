@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import clsx from 'clsx'
 import type { DbConnectionDto } from '../api/dbConnections'
 import { IconChevronDown, IconDatabase, IconTable } from './icons'
@@ -86,6 +87,9 @@ function ConnectionNode({
   selected: string[]
   onToggleTable: (name: string) => void
 }) {
+  const navigate = useNavigate()
+  const { workspaceId } = useParams<{ workspaceId: string }>()
+
   // A qualified name is database.schema.table; anything shorter has no database
   // segment to group by, so those fall under a single unnamed group.
   const groups = useMemo(() => {
@@ -141,22 +145,36 @@ function ConnectionNode({
                 tables.map((name) => {
                   const isSelected = selected.includes(name)
                   return (
-                    <button
+                    <div
                       key={name}
-                      onClick={() => onToggleTable(name)}
-                      title={`${name}\nکلیک: محدود کردن سؤال بعدی به این جدول`}
                       className={clsx(
-                        'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
+                        'group/tbl flex items-center gap-1 rounded-md pl-1 transition-colors',
                         isSelected
-                          ? 'bg-primary-soft font-medium text-primary'
+                          ? 'bg-primary-soft text-primary'
                           : 'text-sidebar-muted hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
                       )}
                     >
-                      <IconTable className="size-3 shrink-0 opacity-60" />
-                      <span className="min-w-0 flex-1 truncate text-right" dir="ltr">
-                        {name.split('.').pop()}
-                      </span>
-                    </button>
+                      <button
+                        onClick={() => navigate(`/workspace/${workspaceId}/table/${conn.id}/${encodeURIComponent(name)}`)}
+                        title={`${name}\nکلیک: باز کردن داده‌های جدول`}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-1 text-[11px]"
+                      >
+                        <IconTable className="size-3 shrink-0 opacity-60" />
+                        <span className="min-w-0 flex-1 truncate text-right" dir="ltr">
+                          {name.split('.').pop()}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => onToggleTable(name)}
+                        title={isSelected ? 'حذف از دامنه‌ی سؤال' : 'افزودن به دامنه‌ی سؤال بعدی'}
+                        className={clsx(
+                          'shrink-0 rounded px-1 text-[11px] font-bold transition-opacity',
+                          isSelected ? 'opacity-100' : 'opacity-0 group-hover/tbl:opacity-100',
+                        )}
+                      >
+                        @
+                      </button>
+                    </div>
                   )
                 })}
             </div>

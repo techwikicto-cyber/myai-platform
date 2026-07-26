@@ -456,3 +456,57 @@ async def execute_console_query(
         "truncated": result.truncated,
         "duration_ms": audit.duration_ms,
     }
+
+
+def _known_table_names(conn: DbConnection) -> set[str]:
+    summary = conn.schema_summary or {}
+    items = summary.get("tables") or summary.get("collections") or []
+    return {i["name"] for i in items if isinstance(i, dict) and "name" in i}
+
+
+@router.get("/{connection_id}/tables/{table_name:path}/preview")
+async def preview_table(
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    table_name: str,
+    limit: int = 100,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rows and column list for one table, for the data browser.
+
+    The table name is matched against the introspected schema rather than interpolated
+    from user input, so the generated SELECT can only ever name a table we already know
+    exists — the client cannot smuggle SQL through this path.
+    """
+    conn = await db.get(DbConnection, connection_id)
+    if not conn or conn.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+
+    known = _known_table_names(conn)
+    match = next((n for n in known if n == table_name or n.split(".")[-1] == table_name), None)
+    if match is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="جدول در اسکیمای این اتصال پیدا نشد")
+
+    limit = max(1, min(limit, 500))
+    if conn.engine == DbEngine.mongodb:
+        result = await factory.execute_query(
+            conn, {"operation": "find", "collection": match.split(".")[-1], "filter": {}}, row_limit=limit
+        )
+    else:
+        result = await factory.execute_query(conn, f"SELECT * FROM {match}", row_limit=limit)
+
+    summary = conn.schema_summary or {}
+    items = summary.get("tables") or summary.get("collections") or []
+    entry = next((i for i in items if i.get("name") == match), {})
+    columns_meta = entry.get("columns") or [
+        {"name": k, "type": v} for k, v in (entry.get("sample_fields") or {}).items()
+    ]
+
+    return {
+        "name": match,
+        "columns_meta": columns_meta,
+        "columns": result.columns,
+        "rows": result.rows,
+        "truncated": result.truncated,
+    }

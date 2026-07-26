@@ -95,6 +95,13 @@ export const IconTrash = icon(
   </>,
 )
 
+export const IconClock = icon(
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" />
+  </>,
+)
+
 export const IconTable = icon(
   <>
     <rect x="3" y="3" width="18" height="18" rx="2" />

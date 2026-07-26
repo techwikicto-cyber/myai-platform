@@ -112,3 +112,17 @@ export function executeConsoleQuery(workspaceId: string, connectionId: string, s
     row_limit: rowLimit,
   })
 }
+
+export interface TablePreview {
+  name: string
+  columns_meta: { name: string; type: string }[]
+  columns: string[]
+  rows: Record<string, unknown>[]
+  truncated: boolean
+}
+
+export function previewTable(workspaceId: string, connectionId: string, tableName: string, limit = 100) {
+  return api.get<TablePreview>(
+    `/workspaces/${workspaceId}/db-connections/${connectionId}/tables/${encodeURIComponent(tableName)}/preview?limit=${limit}`,
+  )
+}

@@ -7,6 +7,7 @@ from app.routers import (
     chat,
     db_connections,
     documents,
+    history,
     knowledge,
     settings as settings_router,
     users,
@@ -33,6 +34,7 @@ app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(db_connections.router)
 app.include_router(knowledge.router)
+app.include_router(history.router)
 app.include_router(settings_router.router)
 
 

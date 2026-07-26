@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useMatch } from 'react-router-dom'
 import clsx from 'clsx'
 import { useAuthStore } from '../store/auth'
-import { IconBook, IconChat, IconDatabase, IconLogout, IconSettings } from './icons'
+import { IconBook, IconChat, IconClock, IconDatabase, IconLogout, IconSettings } from './icons'
 import OwlLogo from './Logo'
 import ProfileModal from './ProfileModal'
 
@@ -31,6 +31,12 @@ export default function NavRail() {
             to: `/workspace/${activeWorkspaceId}/console`,
             icon: <IconDatabase />,
             label: 'کنسول SQL',
+            end: false,
+          },
+          {
+            to: `/workspace/${activeWorkspaceId}/history`,
+            icon: <IconClock />,
+            label: 'تاریخچه کوئری‌ها',
             end: false,
           },
           {
