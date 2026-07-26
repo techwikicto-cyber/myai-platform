@@ -2,7 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import auth, chat, db_connections, documents, settings as settings_router, users, workspaces
+from app.routers import (
+    auth,
+    chat,
+    db_connections,
+    documents,
+    knowledge,
+    settings as settings_router,
+    users,
+    workspaces,
+)
 
 settings = get_settings()
 
@@ -23,6 +32,7 @@ app.include_router(workspaces.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(db_connections.router)
+app.include_router(knowledge.router)
 app.include_router(settings_router.router)
 
 

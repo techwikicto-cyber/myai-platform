@@ -26,6 +26,7 @@ from app.services.db_connectors import factory
 from app.services.db_chat import build_db_tools_and_context
 from app.services.db_query_tool import run_tool_call
 from app.services.embeddings import embed_texts
+from app.services.knowledge import build_knowledge_context
 from app.services.llm import LlmError, complete_chat_with_tools, stream_chat
 from app.services.memory import maybe_summarize_history
 from app.services.model_config import get_embedding_config, get_llm_config, get_reviewer_llm_config
@@ -385,6 +386,18 @@ async def send_message(
     )
     if db_context:
         extra_context = f"{extra_context}\n\n{db_context}" if extra_context else db_context
+
+    # Curated domain knowledge (terms / business rules / verified query examples) that
+    # the schema alone cannot convey — e.g. that «حساب کل» means acc_Level=1 in _Accs.
+    # Placed after the schema so it reads as an authoritative gloss on it.
+    knowledge_context = await build_knowledge_context(
+        thread.workspace_id,
+        db,
+        query_vector,
+        db_connection_ids=[c.id for c in db_connections_by_name.values()],
+    )
+    if knowledge_context:
+        extra_context = f"{extra_context}\n\n{knowledge_context}" if extra_context else knowledge_context
 
     # Always tell the model exactly which real sources exist, so it never invents
     # documents or database tables when the workspace is empty.

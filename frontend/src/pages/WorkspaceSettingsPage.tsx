@@ -4,10 +4,12 @@ import clsx from 'clsx'
 import { workspacesApi } from '../api/workspaces'
 import { usersApi } from '../api/users'
 import { documentsApi, type DocumentDto, type SharedDocumentDto } from '../api/documents'
+import { dbConnectionsApi, type DbConnectionDto } from '../api/dbConnections'
 import DbConnectionsPanel from '../components/DbConnectionsPanel'
+import KnowledgePanel from '../components/KnowledgePanel'
 import ShareModal from '../components/ShareModal'
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Spinner, Textarea } from '../components/ui'
-import { IconDatabase, IconDocument, IconGlobe, IconSettings, IconTrash, IconUpload, IconUserPlus, IconUsers } from '../components/icons'
+import { IconBook, IconDatabase, IconDocument, IconGlobe, IconSettings, IconTrash, IconUpload, IconUserPlus, IconUsers } from '../components/icons'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useWorkspaceStore } from '../store/workspaces'
@@ -34,7 +36,7 @@ export default function WorkspaceSettingsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const currentUser = useAuthStore((s) => s.user)
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'general' | 'documents' | 'database' | 'members'>('general')
+  const [tab, setTab] = useState<'general' | 'documents' | 'database' | 'knowledge' | 'members'>('general')
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [name, setName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -42,6 +44,9 @@ export default function WorkspaceSettingsPage() {
   const [savedMsg, setSavedMsg] = useState('')
   const [documents, setDocuments] = useState<DocumentDto[]>([])
   const [sharedDocs, setSharedDocs] = useState<SharedDocumentDto[]>([])
+  // Loaded here (not inside KnowledgePanel) so a knowledge entry can be scoped to a
+  // specific connection when the same term means different things per database.
+  const [knowledgeConnections, setKnowledgeConnections] = useState<DbConnectionDto[]>([])
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -82,6 +87,7 @@ export default function WorkspaceSettingsPage() {
     })
     reloadDocuments()
     reloadMembers()
+    dbConnectionsApi.list(workspaceId).then(setKnowledgeConnections).catch(() => {})
     // Admin can load all users to search and assign
     if (isAdmin || isManager) {
       usersApi.list().then(setAllUsers).catch(() => {})
@@ -189,6 +195,7 @@ export default function WorkspaceSettingsPage() {
     { key: 'general' as const, label: 'عمومی', icon: <IconSettings /> },
     { key: 'documents' as const, label: 'مستندات', icon: <IconDocument /> },
     { key: 'database' as const, label: 'اتصال دیتابیس', icon: <IconDatabase /> },
+    { key: 'knowledge' as const, label: 'دانش سازمانی', icon: <IconBook /> },
     ...(isManager ? [{ key: 'members' as const, label: 'اعضا', icon: <IconUsers /> }] : []),
   ]
 
@@ -390,6 +397,10 @@ export default function WorkspaceSettingsPage() {
       )}
 
       {tab === 'database' && workspaceId && <DbConnectionsPanel workspaceId={workspaceId} />}
+
+      {tab === 'knowledge' && workspaceId && (
+        <KnowledgePanel workspaceId={workspaceId} connections={knowledgeConnections} />
+      )}
 
       {sharingDoc && workspaceId && (
         <ShareModal
