@@ -47,6 +47,9 @@ class MessageOut(BaseModel):
 class MessageCreate(BaseModel):
     content: str
     mode: ChatMode = "auto"
+    # Tables/collections the user scoped this question to via the composer's "@" picker
+    # (Chat2DB's @-mention equivalent). Empty = whole schema, as before.
+    tables: list[str] = []
 
 
 class PinCreate(BaseModel):

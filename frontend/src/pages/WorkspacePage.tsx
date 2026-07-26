@@ -38,13 +38,14 @@ export default function WorkspacePage() {
   const navigate = useNavigate()
   const threadStore = useThreadStore()
 
-  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, mode: modeMap, setMessages, setInput, setSending, setError, setMode } = useChatStore()
+  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, mode: modeMap, tables: tablesMap, setMessages, setInput, setSending, setError, setMode, setTables } = useChatStore()
 
   const messages = threadId ? (msgsMap[threadId] || []) : []
   const input = threadId ? (inpsMap[threadId] || '') : ''
   const sending = threadId ? (sendMap[threadId] || false) : false
   const error = threadId ? (errMap[threadId] || '') : ''
   const mode: ChatMode = threadId ? (modeMap[threadId] || 'auto') : 'auto'
+  const scopedTables = useMemo(() => (threadId ? tablesMap[threadId] || [] : []), [threadId, tablesMap])
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [pins, setPins] = useState<PinDto[]>([])
@@ -59,6 +60,30 @@ export default function WorkspacePage() {
   const currentThreadTitleRef = useRef<string>('گفتگوی جدید')
 
   const pinnedMessageIds = useMemo(() => new Set(pins.map((p) => p.message_id)), [pins])
+
+  // Flat list of every table/collection across connected databases, for the "@" picker.
+  const allTableNames = useMemo(() => {
+    const names: string[] = []
+    for (const c of dbConnections) {
+      const s = c.schema_summary as SchemaSummary
+      for (const item of s?.tables ?? s?.collections ?? []) names.push(item.name)
+    }
+    return names
+  }, [dbConnections])
+
+  // Starter prompts, derived from what this workspace actually has rather than a fixed
+  // list — a suggestion referencing a table that doesn't exist is worse than none.
+  const starterQuestions = useMemo(() => {
+    const qs: string[] = []
+    if (dbConnections.length > 0) {
+      qs.push('چه جدول‌هایی در دسترس داری؟')
+      const sample = allTableNames[0]?.split('.').pop()
+      if (sample) qs.push(`ستون‌های جدول ${sample} چیست؟`)
+      qs.push('ساختار و روابط بین جدول‌ها را توضیح بده')
+    }
+    if (documents.length > 0) qs.push('خلاصه‌ای از اسناد این فضای کاری بده')
+    return qs
+  }, [dbConnections, documents, allTableNames])
 
   // Load workspace info
   useEffect(() => {
@@ -190,7 +215,7 @@ export default function WorkspacePage() {
         } else if (event.type === 'error') {
           setError(currentThreadId, event.message)
         }
-      }, controller.signal, mode)
+      }, controller.signal, mode, scopedTables)
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         setError(currentThreadId, err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
@@ -316,13 +341,38 @@ export default function WorkspacePage() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl space-y-4 px-6 py-6">
             {messages.length === 0 && !error && (
-              <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+              <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
                 <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">
                   <IconChat className="size-6" />
                 </div>
                 <p className="text-sm text-muted-foreground">
                   سوال خود را بپرسید — پاسخ بر اساس اسناد و داده‌های این فضای کاری داده می‌شود.
                 </p>
+                {/* Chat2DB-style starter prompts: with a large schema users often don't
+                    know where to begin, and a bad first question wastes a slow turn. */}
+                {starterQuestions.length > 0 && (
+                  <div className="mt-2 flex w-full max-w-2xl flex-col gap-2">
+                    <span className="text-[11px] font-medium text-muted-foreground/70">
+                      پیشنهاد برای شروع
+                    </span>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {starterQuestions.map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => {
+                            if (!threadId) return
+                            setInput(threadId, q)
+                            setTimeout(() => textareaRef.current?.focus(), 0)
+                          }}
+                          className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {messages.map((m) => (
@@ -497,14 +547,24 @@ export default function WorkspacePage() {
                 </button>
               )}
             </div>
-            <div className="mt-2 flex items-center justify-between gap-3 px-1">
-              {dbConnections.length > 0 && (
-                <ChatModeSelector
-                  value={mode}
-                  onChange={(m) => threadId && setMode(threadId, m)}
-                  disabled={sending}
-                />
-              )}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {dbConnections.length > 0 && (
+                  <>
+                    <ChatModeSelector
+                      value={mode}
+                      onChange={(m) => threadId && setMode(threadId, m)}
+                      disabled={sending}
+                    />
+                    <TableScopePicker
+                      allTables={allTableNames}
+                      selected={scopedTables}
+                      onChange={(t) => threadId && setTables(threadId, t)}
+                      disabled={sending}
+                    />
+                  </>
+                )}
+              </div>
               <p className="text-[11px] text-muted-foreground/70">
                 Enter برای ارسال — Shift+Enter برای خط جدید
               </p>
@@ -555,6 +615,142 @@ function ChatModeSelector({
           {m.label}
         </button>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Chat2DB's "@" table-mention, adapted: scope a question to specific tables instead of
+ * sending the model the whole schema. With ~200 tables in context the model has to
+ * guess which are relevant; naming the two or three that matter is the single biggest
+ * accuracy lever the UI can offer.
+ */
+function TableScopePicker({
+  allTables,
+  selected,
+  onChange,
+  disabled,
+}: {
+  allTables: string[]
+  selected: string[]
+  onChange: (tables: string[]) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const pool = q ? allTables.filter((t) => t.toLowerCase().includes(q)) : allTables
+    return pool.slice(0, 50)
+  }, [allTables, search])
+
+  function toggle(name: string) {
+    onChange(selected.includes(name) ? selected.filter((t) => t !== name) : [...selected, name])
+  }
+
+  if (allTables.length === 0) return null
+
+  return (
+    <div className="relative flex flex-wrap items-center gap-1.5" ref={boxRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title="محدود کردن سوال به جدول‌های مشخص — دقت پاسخ را زیاد بالا می‌برد"
+        className={clsx(
+          'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50',
+          selected.length > 0
+            ? 'border-primary/40 bg-primary-soft text-primary'
+            : 'border-border bg-card text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <span className="font-bold">@</span>
+        {selected.length > 0 ? `${selected.length} جدول` : 'انتخاب جدول'}
+      </button>
+
+      {selected.map((name) => (
+        <span
+          key={name}
+          className="inline-flex max-w-[220px] items-center gap-1 rounded-md bg-primary-soft px-2 py-0.5 text-[11px] text-primary"
+        >
+          <span className="truncate" dir="ltr" title={name}>
+            {name.split('.').pop()}
+          </span>
+          <button
+            type="button"
+            onClick={() => toggle(name)}
+            disabled={disabled}
+            title="حذف از دامنه"
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
+            <IconX className="size-3" />
+          </button>
+        </span>
+      ))}
+
+      {open && (
+        <div className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-xl border border-border bg-card p-2 shadow-lg">
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="جستجوی نام جدول…"
+            dir="ltr"
+            className="mb-2 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+          />
+          <div className="max-h-64 space-y-0.5 overflow-y-auto">
+            {matches.length === 0 ? (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">جدولی پیدا نشد</p>
+            ) : (
+              matches.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => toggle(name)}
+                  className={clsx(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-right text-xs transition-colors',
+                    selected.includes(name)
+                      ? 'bg-primary-soft text-primary'
+                      : 'text-foreground/80 hover:bg-muted',
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'flex size-3.5 shrink-0 items-center justify-center rounded border',
+                      selected.includes(name) ? 'border-primary bg-primary text-white' : 'border-border',
+                    )}
+                  >
+                    {selected.includes(name) && <IconCheckSmall className="size-2.5" />}
+                  </span>
+                  <span className="truncate" dir="ltr" title={name}>
+                    {name}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="mt-2 w-full rounded-md py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              پاک کردن همه
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

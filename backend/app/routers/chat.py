@@ -379,8 +379,9 @@ async def send_message(
         except Exception:  # noqa: BLE001
             extra_context = None
 
+    scoped_tables = {t.strip().lower() for t in payload.tables if t.strip()} or None
     db_tools, db_context, db_connections_by_name = await build_db_tools_and_context(
-        thread.workspace_id, query_vector, db, query_text=payload.content
+        thread.workspace_id, query_vector, db, query_text=payload.content, only_tables=scoped_tables
     )
     if db_context:
         extra_context = f"{extra_context}\n\n{db_context}" if extra_context else db_context

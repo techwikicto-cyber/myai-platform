@@ -18,6 +18,43 @@ import {
 import OwlLogo from './Logo'
 import MiniChart, { parseMarkdownTable, tableToCSV } from './MiniChart'
 
+/**
+ * Chat2DB renders an answer as typed parts (MARKDOWN / DATA / TABLE / …) rather than
+ * one flat blob. Bina's model already emits the executed query as a fenced sql block
+ * (the prompt asks it to); lifting that out into its own collapsed panel gives the same
+ * separation without changing the backend response format — the prose stays readable
+ * and the SQL is there when you want to verify it.
+ */
+function splitExecutedSql(content: string): { prose: string; sql: string | null } {
+  const fence = /```sql\s*\n([\s\S]*?)```/i
+  const match = content.match(fence)
+  if (!match) return { prose: content, sql: null }
+  return { prose: content.replace(fence, '').replace(/\n{3,}/g, '\n\n').trim(), sql: match[1].trim() }
+}
+
+function ExecutedSql({ sql }: { sql: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-border">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 bg-muted/50 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <span>کوئری اجراشده</span>
+        <span className="flex items-center gap-1.5">
+          <CopyButton content={sql} label="کپی کوئری" />
+          <span>{open ? '−' : '+'}</span>
+        </span>
+      </button>
+      {open && (
+        <pre className="overflow-x-auto bg-background px-3 py-2 text-[11px] leading-relaxed" dir="ltr">
+          <code>{sql}</code>
+        </pre>
+      )}
+    </div>
+  )
+}
+
 function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1 py-1" aria-label="در حال نوشتن">
@@ -105,6 +142,7 @@ function MessageBubble({
   }
 
   const showTyping = message.pending && !message.content
+  const { prose, sql } = splitExecutedSql(message.content)
   const tableData = !showTyping && !message.pending ? parseMarkdownTable(message.content) : null
   const hasTable = tableData !== null
   const serverExportIds = message.export_ids || []
@@ -169,9 +207,10 @@ function MessageBubble({
               <>
                 <div className="markdown-body [&_hr]:my-3 [&_hr]:border-border">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                    {message.content}
+                    {prose}
                   </ReactMarkdown>
                 </div>
+                {sql && <ExecutedSql sql={sql} />}
                 {showChart && tableData && (
                   <MiniChart headers={tableData.headers} rows={tableData.rows} />
                 )}

@@ -9,12 +9,15 @@ interface ChatState {
   sending: Record<string, boolean>
   error: Record<string, string>
   mode: Record<string, ChatMode>
+  /** Tables the next message is scoped to, per thread. */
+  tables: Record<string, string[]>
 
   setMessages: (threadId: string, msgs: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void
   setInput: (threadId: string, text: string) => void
   setSending: (threadId: string, isSending: boolean) => void
   setError: (threadId: string, msg: string) => void
   setMode: (threadId: string, mode: ChatMode) => void
+  setTables: (threadId: string, tables: string[]) => void
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -23,6 +26,7 @@ export const useChatStore = create<ChatState>((set) => ({
   sending: {},
   error: {},
   mode: {},
+  tables: {},
 
   setMessages: (threadId, updater) =>
     set((s) => ({
@@ -39,4 +43,6 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => ({ error: { ...s.error, [threadId]: msg } })),
   setMode: (threadId, mode) =>
     set((s) => ({ mode: { ...s.mode, [threadId]: mode } })),
+  setTables: (threadId, tables) =>
+    set((s) => ({ tables: { ...s.tables, [threadId]: tables } })),
 }))

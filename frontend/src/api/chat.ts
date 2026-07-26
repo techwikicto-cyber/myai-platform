@@ -39,6 +39,7 @@ export async function streamMessage(
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
   mode: ChatMode = 'auto',
+  tables: string[] = [],
 ): Promise<void> {
   const token = useAuthStore.getState().token
   const res = await fetch(`${API_BASE}/threads/${threadId}/messages`, {
@@ -47,7 +48,7 @@ export async function streamMessage(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content, mode }),
+    body: JSON.stringify({ content, mode, tables }),
     signal,
   })
 

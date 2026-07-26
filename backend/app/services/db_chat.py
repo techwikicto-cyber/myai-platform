@@ -15,6 +15,7 @@ async def build_db_tools_and_context(
     query_embedding: list[float] | None,
     db: AsyncSession,
     query_text: str = "",
+    only_tables: set[str] | None = None,
 ) -> tuple[list[dict], str | None, dict[str, DbConnection]]:
     share_subq = (
         select(DbConnectionWorkspaceShare.id)
@@ -51,9 +52,16 @@ async def build_db_tools_and_context(
             doc_text = "\n".join(c.content for c in chunks)
 
         engine_knowledge = get_engine_knowledge(conn.engine)
+        schema_text = summarize_schema(conn, only_tables=only_tables)
+        scope_note = (
+            "\n\n(کاربر این پرسش را به همین جدول‌های انتخاب‌شده محدود کرده است؛ فقط از همین‌ها "
+            "استفاده کن و نام جدول دیگری به کار نبر.)"
+            if only_tables
+            else ""
+        )
         context_parts.append(
             f"### اتصال دیتابیس «{conn.name}» (نوع: {conn.engine.value})\n"
-            f"ساختار:\n{summarize_schema(conn)}\n\n"
+            f"ساختار:\n{schema_text}{scope_note}\n\n"
             f"توضیحات معنایی (از سند آموزش اسکیما):\n{doc_text or '(سندی آپلود نشده)'}\n\n"
             f"{engine_knowledge}"
         )

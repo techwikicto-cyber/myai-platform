@@ -29,8 +29,23 @@ MAX_RESULT_CHARS = 4000
 AGGREGATION_HINT_WORDS = {"جمع", "مجموع", "میانگین", "متوسط", "تعداد", "چند", "درصد", "sum", "total", "average", "count"}
 
 
-def summarize_schema(conn: DbConnection) -> str:
-    """Returns schema description filtered to allowed tables only."""
+def _matches_scope(name: str, scope: set[str] | None) -> bool:
+    """True when a table/collection is inside the user's per-message scope. Matches on
+    the full name and on the bare name (last segment after any database.schema.
+    qualification), so a picked table works for multi-database connections too."""
+    if not scope:
+        return True
+    lowered = name.lower()
+    return lowered in scope or lowered.split(".")[-1] in scope
+
+
+def summarize_schema(conn: DbConnection, only_tables: set[str] | None = None) -> str:
+    """Returns schema description filtered to allowed tables only.
+
+    only_tables is the per-message scope the user picked in the composer (Chat2DB's
+    @-mention equivalent). Narrowing this matters for more than prompt size: with 188
+    tables in context the model has to guess which ones are relevant, and picking the
+    two or three that actually matter is the single biggest accuracy lever available."""
     if not conn.schema_summary:
         return "(اسکیما هنوز استخراج نشده است — از دکمه «به‌روزرسانی اسکیما» استفاده کنید)"
 
@@ -40,6 +55,8 @@ def summarize_schema(conn: DbConnection) -> str:
         lines = []
         for coll in conn.schema_summary.get("collections", []):
             if allowed is not None and coll["name"].lower() not in {k.lower() for k in allowed}:
+                continue
+            if not _matches_scope(coll["name"], only_tables):
                 continue
             allowed_cols = (allowed or {}).get(coll["name"]) or (allowed or {}).get(coll["name"].lower())
             fields = {k: v for k, v in coll.get("sample_fields", {}).items()
@@ -51,6 +68,8 @@ def summarize_schema(conn: DbConnection) -> str:
     lines = []
     for table in conn.schema_summary.get("tables", []):
         if allowed is not None and table["name"].lower() not in {k.lower() for k in allowed}:
+            continue
+        if not _matches_scope(table["name"], only_tables):
             continue
         allowed_cols = None
         if allowed is not None:
