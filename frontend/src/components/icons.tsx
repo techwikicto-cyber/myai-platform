@@ -95,6 +95,15 @@ export const IconTrash = icon(
   </>,
 )
 
+export const IconTable = icon(
+  <>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M3 15h18" />
+    <path d="M9 3v18" />
+  </>,
+)
+
 export const IconBook = icon(
   <>
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />

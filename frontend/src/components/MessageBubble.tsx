@@ -132,12 +132,14 @@ function MessageBubble({
   isPinned = false,
   onPin,
   onSqlAction,
+  onRetryWithQuery,
 }: {
   message: ChatMessage
   onEdit?: (messageId: string, content: string) => void
   isPinned?: boolean
   onPin?: (messageId: string, content: string) => Promise<void>
   onSqlAction?: SqlActionHandler
+  onRetryWithQuery?: (assistantMessageId: string) => void
 }) {
   const [showChart, setShowChart] = useState(false)
   const [pinning, setPinning] = useState(false)
@@ -276,6 +278,16 @@ function MessageBubble({
                 }`}
               >
                 <IconBarChart />
+              </button>
+            )}
+
+            {onRetryWithQuery && !hasServerExport && (
+              <button
+                onClick={() => onRetryWithQuery(message.id)}
+                title="این پاسخ بدون اجرای کوئری ساخته شده — دوباره بپرس و این بار حتماً روی دیتابیس کوئری بزن"
+                className="rounded-md px-2 py-1 text-[11px] text-muted-foreground/70 transition-all hover:bg-muted hover:text-primary"
+              >
+                با کوئری دوباره بپرس
               </button>
             )}
 

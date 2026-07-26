@@ -12,20 +12,11 @@ import {
   IconChat,
   IconChevronDown,
   IconEdit,
-  IconLogout,
   IconPlus,
   IconSettings,
   IconX,
 } from './icons'
-import OwlLogo from './Logo'
-import ProfileModal from './ProfileModal'
 import { Spinner } from './ui'
-
-const roleLabels: Record<string, string> = {
-  admin: 'ادمین سیستم',
-  manager: 'ادمین فضای کاری',
-  user: 'کاربر',
-}
 
 export default function Sidebar() {
   const workspaces = useWorkspaceStore((s) => s.workspaces)
@@ -38,9 +29,7 @@ export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-  const [showProfileModal, setShowProfileModal] = useState(false)
   const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
 
   const threadStore = useThreadStore()
@@ -133,24 +122,9 @@ export default function Sidebar() {
 
   const canCreateWorkspace = user?.role === 'admin' || user?.role === 'manager'
 
-  const navItemClass = ({ isActive }: { isActive: boolean }) =>
-    clsx(
-      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-      isActive
-        ? 'bg-sidebar-primary-bg font-semibold text-sidebar-primary ring-1 ring-inset ring-sidebar-primary/20'
-        : 'text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-    )
 
   return (
-    <aside className="flex h-full w-64 flex-shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-4">
-        <OwlLogo className="size-9 shrink-0" />
-        <span className="text-base font-bold">پلتفرم بینا</span>
-      </div>
-
-      <div className="mx-4 border-t border-sidebar-border" />
-
+    <aside className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto px-3 py-3">
         {/* Section header */}
         <div
@@ -353,45 +327,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-sidebar-border p-3">
-        {user?.role === 'admin' && (
-          <NavLink to="/admin/users" className={navItemClass}>
-            <IconSettings />
-            پنل مدیریت
-          </NavLink>
-        )}
-        <div className="mt-1 flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-sidebar-accent/50 transition-colors">
-          <button 
-            className="flex min-w-0 items-center gap-2.5 flex-1 text-right"
-            onClick={() => setShowProfileModal(true)}
-            title="تنظیمات پروفایل"
-          >
-            {user?.profile_picture ? (
-              <img src={user.profile_picture} alt="Avatar" className="size-8 rounded-full object-cover shrink-0 border border-white/10" />
-            ) : (
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-xs uppercase border border-primary/20">
-                {user?.email?.[0] || 'U'}
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-sidebar-foreground">
-                {user?.full_name || user?.email}
-              </p>
-              <p className="text-[10px] text-sidebar-muted">{user ? roleLabels[user.role] : ''}</p>
-            </div>
-          </button>
-          <button
-            onClick={logout}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-destructive"
-            title="خروج"
-          >
-            <IconLogout />
-          </button>
-        </div>
-      </div>
-      
-      {showProfileModal && <ProfileModal onClose={() => setShowProfileModal(false)} />}
     </aside>
   )
 }

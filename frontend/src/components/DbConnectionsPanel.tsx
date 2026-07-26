@@ -482,7 +482,7 @@ function ConnectionCard({
       </div>
 
       <div className="border-t border-border bg-muted/40 p-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-1 flex items-center justify-between">
           <p className="text-sm font-medium text-foreground">سند آموزش اسکیما</p>
           <label
             className={clsx(
@@ -495,8 +495,12 @@ function ConnectionCard({
             <input ref={fileInputRef} type="file" onChange={handleUploadSchemaDoc} disabled={uploading} className="hidden" />
           </label>
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">
+        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
           فایلی (pdf/docx/xlsx/csv) آپلود کنید که معنی جدول‌ها و فیلدها را توضیح می‌دهد — مدل با کمک آن کوئری دقیق‌تری می‌سازد.
+          مناسب <span className="font-medium text-foreground/80">واردات انبوه</span> است؛ سند تکه‌تکه می‌شود و سر هر
+          پرسش فقط مرتبط‌ترین تکه‌هایش به مدل می‌رسد. برای چند نکته‌ی حیاتی که باید{' '}
+          <span className="font-medium text-foreground/80">همیشه</span> در اختیار مدل باشند، به‌جای سند از بخش
+          «دانش سازمانی» استفاده کنید.
         </p>
         {uploadError && (
           <div className="mb-3">

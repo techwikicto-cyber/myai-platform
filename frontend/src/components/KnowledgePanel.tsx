@@ -78,7 +78,7 @@ export default function KnowledgePanel({
     <Card>
       <CardHeader
         title="دانش سازمانی"
-        description="به دستیار یاد بدهید اصطلاحات و قواعد سازمان شما یعنی چه — بیشترین تأثیر را روی دقت پاسخ‌ها دارد"
+        description="نکته‌های کوتاه و حیاتی که همیشه به مدل داده می‌شوند — بیشترین تأثیر را روی دقت پاسخ‌ها دارد"
         action={
           !adding && (
             <Button size="sm" onClick={() => setAdding(true)}>
@@ -109,7 +109,18 @@ export default function KnowledgePanel({
           ))}
         </div>
 
-        <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{active.description}</p>
+        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{active.description}</p>
+
+        {/* The overlap with schema-description documents is real and confusing without
+            this: both explain the database to the model. The distinction that matters is
+            retrieval — documents compete for a few slots per question, these never do. */}
+        <div className="mb-4 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          <span className="font-medium text-foreground/80">تفاوت با «سند توضیح اسکیما»:</span>{' '}
+          سندها تکه‌تکه می‌شوند و سر هر سؤال فقط مرتبط‌ترین تکه‌هایشان به مدل می‌رسد؛ پس برای
+          واردات انبوه (مثلاً دیتاکشنری کامل نرم‌افزار) مناسب‌اند. اما اصطلاحاتی که اینجا ثبت
+          می‌کنید <span className="font-medium text-foreground/80">همیشه</span> و بدون رقابت به
+          مدل داده می‌شوند — جای همان چند ده نکته‌ای که هیچ‌وقت نباید از قلم بیفتند.
+        </div>
 
         {adding && (
           <div className="mb-4 space-y-3 rounded-lg border border-border bg-muted/30 p-4">

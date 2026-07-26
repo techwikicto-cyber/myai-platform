@@ -38,13 +38,12 @@ export default function WorkspacePage() {
   const navigate = useNavigate()
   const threadStore = useThreadStore()
 
-  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, mode: modeMap, tables: tablesMap, setMessages, setInput, setSending, setError, setMode, setTables } = useChatStore()
+  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, tables: tablesMap, setMessages, setInput, setSending, setError, setTables } = useChatStore()
 
   const messages = threadId ? (msgsMap[threadId] || []) : []
   const input = threadId ? (inpsMap[threadId] || '') : ''
   const sending = threadId ? (sendMap[threadId] || false) : false
   const error = threadId ? (errMap[threadId] || '') : ''
-  const mode: ChatMode = threadId ? (modeMap[threadId] || 'auto') : 'auto'
   const scopedTables = useMemo(() => (threadId ? tablesMap[threadId] || [] : []), [threadId, tablesMap])
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
@@ -170,7 +169,7 @@ export default function WorkspacePage() {
     if (!input.trim() || !threadId || sending) return
     const userText = input.trim()
     setInput(threadId, '')
-    await sendMessage(userText, mode, scopedTables)
+    await sendMessage(userText, 'auto', scopedTables)
   }
 
   /**
@@ -185,6 +184,28 @@ export default function WorkspacePage() {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [threadId, sending],
+  )
+
+  /**
+   * Recovery action shown under an answer that came back without running a query.
+   * Replaces the old always-visible mode toggle: instead of asking users to predict up
+   * front whether their question needs data, the choice is offered at the only moment
+   * it's actually informed — after seeing an answer that skipped the database.
+   */
+  const handleRetryWithQuery = useCallback(
+    (assistantId: string) => {
+      if (!threadId) return
+      const list = useChatStore.getState().messages[threadId] || []
+      const idx = list.findIndex((m) => m.id === assistantId)
+      for (let i = idx - 1; i >= 0; i--) {
+        if (list[i].role === 'user') {
+          void sendMessage(list[i].content, 'query', scopedTables)
+          return
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [threadId, sending, scopedTables],
   )
 
   async function sendMessage(userText: string, sendMode: ChatMode, sendTables: string[], sendSql?: string) {
@@ -402,6 +423,11 @@ export default function WorkspacePage() {
                 isPinned={pinnedMessageIds.has(m.id)}
                 onPin={m.role === 'assistant' ? handlePin : undefined}
                 onSqlAction={m.role === 'assistant' ? handleSqlAction : undefined}
+                onRetryWithQuery={
+                  m.role === 'assistant' && !m.pending && dbConnections.length > 0
+                    ? handleRetryWithQuery
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -570,19 +596,12 @@ export default function WorkspacePage() {
             <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-1">
               <div className="flex flex-wrap items-center gap-2">
                 {dbConnections.length > 0 && (
-                  <>
-                    <ChatModeSelector
-                      value={mode}
-                      onChange={(m) => threadId && setMode(threadId, m)}
-                      disabled={sending}
-                    />
-                    <TableScopePicker
-                      allTables={allTableNames}
-                      selected={scopedTables}
-                      onChange={(t) => threadId && setTables(threadId, t)}
-                      disabled={sending}
-                    />
-                  </>
+                  <TableScopePicker
+                    allTables={allTableNames}
+                    selected={scopedTables}
+                    onChange={(t) => threadId && setTables(threadId, t)}
+                    disabled={sending}
+                  />
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground/70">
@@ -596,54 +615,12 @@ export default function WorkspacePage() {
   )
 }
 
-// Chat2DB-style explicit intent selection: the user states what kind of question this
-// is instead of the model having to infer it from wording. Only shown when the
-// workspace actually has a database connected — with documents only there is nothing
-// to choose between.
-const CHAT_MODES: { value: ChatMode; label: string; title: string }[] = [
-  { value: 'auto', label: 'خودکار', title: 'مدل خودش تصمیم می‌گیرد که کوئری بزند یا از اسناد پاسخ دهد' },
-  { value: 'query', label: 'کوئری روی دیتابیس', title: 'حتماً روی دیتابیس کوئری اجرا می‌شود؛ پاسخ بدون کوئری پذیرفته نمی‌شود' },
-  { value: 'chat', label: 'گفتگو و اسناد', title: 'بدون کوئری؛ پاسخ فقط از روی اسکیما و اسناد این فضای کاری' },
-]
-
-function ChatModeSelector({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: ChatMode
-  onChange: (mode: ChatMode) => void
-  disabled?: boolean
-}) {
-  return (
-    <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-0.5" role="group" aria-label="حالت پاسخ‌دهی">
-      {CHAT_MODES.map((m) => (
-        <button
-          key={m.value}
-          type="button"
-          onClick={() => onChange(m.value)}
-          disabled={disabled}
-          title={m.title}
-          aria-pressed={value === m.value}
-          className={clsx(
-            'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50',
-            value === m.value
-              ? 'bg-card text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {m.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 /**
  * Chat2DB's "@" table-mention, adapted: scope a question to specific tables instead of
  * sending the model the whole schema. With ~200 tables in context the model has to
  * guess which are relevant; naming the two or three that matter is the single biggest
- * accuracy lever the UI can offer.
+ * accuracy lever the UI can offer. Selection is shared with the sidebar's database
+ * tree, so picking a table in either place shows up in both.
  */
 function TableScopePicker({
   allTables,
