@@ -13,6 +13,7 @@ import {
   IconChevronDown,
   IconEdit,
   IconPlus,
+  IconSearch,
   IconSettings,
   IconX,
 } from './icons'
@@ -29,6 +30,8 @@ export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [threadSearch, setThreadSearch] = useState('')
   const user = useAuthStore((s) => s.user)
   const navigate = useNavigate()
 
@@ -40,7 +43,10 @@ export default function Sidebar() {
   const activeWorkspaceId = wsMatch?.params.workspaceId ?? null
   const activeThreadId = threadMatch?.params.threadId ?? null
 
-  const threads: ThreadDto[] = activeWorkspaceId ? (threadStore.threadsByWs[activeWorkspaceId] || []) : []
+  const allThreads: ThreadDto[] = activeWorkspaceId ? (threadStore.threadsByWs[activeWorkspaceId] || []) : []
+  const threads: ThreadDto[] = threadSearch.trim()
+    ? allThreads.filter((t) => t.title.toLowerCase().includes(threadSearch.trim().toLowerCase()))
+    : allThreads
 
   useEffect(() => {
     reloadWorkspaces()
@@ -125,6 +131,45 @@ export default function Sidebar() {
 
   return (
     <aside className="flex h-full flex-col">
+      {/* Chat2DB leads the panel with a filled "New Chat" action and a search box,
+          above the list rather than buried inside it. */}
+      {activeWorkspaceId && (
+        <div className="flex items-center gap-2 px-3 pb-1 pt-3">
+          <button
+            onClick={handleNewThread}
+            disabled={creatingThread}
+            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:opacity-60"
+          >
+            {creatingThread ? <Spinner className="size-3.5" /> : <IconPlus className="size-4" />}
+            گفتگوی جدید
+          </button>
+          <button
+            onClick={() => setSearching((v) => !v)}
+            title="جستجوی گفتگو"
+            className={clsx(
+              'flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors',
+              searching
+                ? 'bg-sidebar-accent text-sidebar-foreground'
+                : 'text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+            )}
+          >
+            <IconSearch className="size-4" />
+          </button>
+        </div>
+      )}
+      {searching && activeWorkspaceId && (
+        <div className="px-3 pb-1 pt-2">
+          <input
+            autoFocus
+            value={threadSearch}
+            onChange={(e) => setThreadSearch(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && (setSearching(false), setThreadSearch(''))}
+            placeholder="جستجو در گفتگوها…"
+            className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent/60 px-2.5 py-1.5 text-xs text-sidebar-foreground outline-none placeholder:text-sidebar-muted/70 focus:border-primary"
+          />
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-3 py-3">
         {/* Section header */}
         <div
@@ -231,15 +276,6 @@ export default function Sidebar() {
                 {/* Thread list for active workspace */}
                 {activeWorkspaceId === w.id && threads.length > 0 && (
                   <div className="mb-1 mt-0.5 mr-3 border-r border-sidebar-border/50 pr-1">
-                    {/* New thread button */}
-                    <button
-                      onClick={handleNewThread}
-                      disabled={creatingThread}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground disabled:opacity-60"
-                    >
-                      {creatingThread ? <Spinner className="size-3" /> : <IconPlus className="size-3" />}
-                      گفتگوی جدید
-                    </button>
 
                     {threads.map((t) => (
                       <div
@@ -276,7 +312,13 @@ export default function Sidebar() {
                             onClick={(e) => e.stopPropagation()}
                             onDoubleClick={(e) => startRename(t, e)}
                           >
-                            <span className="truncate">{t.title}</span>
+                            <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                            <span className="shrink-0 text-[10px] text-sidebar-muted/70 group-hover:hidden">
+                              {new Date(t.updated_at).toLocaleTimeString('fa-IR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
                           </NavLink>
                         )}
                         {renamingThreadId !== t.id && (
@@ -303,19 +345,6 @@ export default function Sidebar() {
                   </div>
                 )}
 
-                {/* Empty state + new thread for active workspace with no threads */}
-                {activeWorkspaceId === w.id && threads.length === 0 && (
-                  <div className="mr-3 border-r border-sidebar-border/50 pr-1">
-                    <button
-                      onClick={handleNewThread}
-                      disabled={creatingThread}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground disabled:opacity-60"
-                    >
-                      {creatingThread ? <Spinner className="size-3" /> : <IconPlus className="size-3" />}
-                      گفتگوی جدید
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
             {workspaces.length === 0 && !creating && (
