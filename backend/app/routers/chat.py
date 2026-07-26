@@ -501,11 +501,6 @@ async def send_message(
         messages.append({"role": "user", "content": f"کوئری مورد نظر:\n```sql\n{payload.sql}\n```"})
 
     async def produce(queue: asyncio.Queue) -> None:
-        # The tool-retry branch replaces the message list with an augmented copy.
-        # Declare the enclosing value explicitly; otherwise Python treats every
-        # reference in this coroutine as a local variable and fails before the
-        # first model call.
-        nonlocal messages
         full_content = ""
         completed = False
         audit_ids: list[uuid.UUID] = []

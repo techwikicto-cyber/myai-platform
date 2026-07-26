@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.deps import require_admin, require_workspace_manager, require_workspace_member
-from app.models.db_connection import DbConnection
+from app.models.db_connection import DbConnection, DbEngine
 from app.models.query_audit_log import QueryAuditLog, QueryAuditStatus
 from app.models.document import Document, DocumentKind
 from app.models.sharing import DbConnectionWorkspaceShare
