@@ -37,17 +37,17 @@ DEFAULT_SYSTEM_PROMPT = (
 #
 # This product only ever answers from this workspace's own documents/database — never
 # from general knowledge. When a database is connected, the execution layer (chat.py)
-# always forces a choice between two tools every turn: query_database for anything
-# needing real data, or answer_without_query when it doesn't. Points ۱–۳ below describe
-# how to use that choice well; the forcing itself is structural, not prompt-dependent.
+# forces query_database when possible for the model to use if the question needs real
+# data; when the model answers in plain text instead (a structural question, or the
+# forcing wasn't honoured), that text is trusted as the answer rather than refused —
+# so points ۱–۳ below describe how the model should actually answer either way.
 ANSWER_POLICY = (
     "برای پاسخ‌دهی، ابتدا نوع سوال کاربر را تشخیص بده:\n"
     "۱) سوال درباره ساختار و منابع این فضای کاری (مثل «به چه دیتابیسی وصلی؟»، «چه جدول‌هایی "
     "داری؟»، «فلان جدول چه ستون‌هایی دارد؟»، «چه اسنادی موجود است؟») یا سوالی که نیاز به داده‌ی "
-    "واقعی ندارد (تعریف یک اصطلاح، ادامه‌ی تحلیلی روی نتایج قبلی همین گفتگو، گفتگوی عادی): از "
-    "ابزار answer_without_query استفاده کن و پاسخ کامل را در همان فیلد answer بنویس. این سوال‌ها "
-    "را هرگز رد نکن — اطلاعاتش همان‌جا در بخش «منابع مرتبط» (اسکیمای دیتابیس، نام اتصال‌ها، فهرست "
-    "اسناد) در اختیار توست.\n"
+    "واقعی ندارد (تعریف یک اصطلاح، ادامه‌ی تحلیلی روی نتایج قبلی همین گفتگو، گفتگوی عادی): مستقیم "
+    "و کامل از روی بخش «منابع مرتبط» (اسکیمای دیتابیس، نام اتصال‌ها، فهرست اسناد) جواب بده. این "
+    "سوال‌ها را هرگز رد نکن — اطلاعاتش همان‌جا در اختیار توست.\n"
     "۲) سوال درباره داده‌ها و مقادیر واقعی (تعداد، جمع، میانگین، لیست رکوردها، نام مشتری، مبلغ، "
     "گزارش، نمودار): همیشه با ابزار query_database کوئری بزن و فقط از نتیجه‌ی واقعیِ همان کوئری "
     "پاسخ بده. هرگز عدد، نام یا ردیفی از خودت نساز و هیچ محاسبه‌ای را دستی انجام نده — محاسبه را با "

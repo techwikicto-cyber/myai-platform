@@ -110,42 +110,6 @@ def build_tool_schema(connection_names: list[str], has_mongo: bool, has_sql: boo
     }
 
 
-DIRECT_ANSWER_TOOL_NAME = "answer_without_query"
-
-
-def build_direct_answer_tool_schema() -> dict:
-    """The escape hatch: forces the model to explicitly declare 'no query needed' as a
-    real structured decision instead of us guessing intent from keywords. When a DB is
-    connected, tool_choice="required" always offers both this and query_database — the
-    model must pick one every turn, so there's no keyword list to keep patching for
-    phrasings we didn't anticipate. The answer goes directly in this call's argument
-    (rather than a separate follow-up completion) so a "no query needed" turn doesn't
-    cost an extra LLM round-trip."""
-    return {
-        "type": "function",
-        "function": {
-            "name": DIRECT_ANSWER_TOOL_NAME,
-            "description": (
-                "استفاده کن وقتی پاسخ این سوال نیاز به کوئری واقعی روی دیتابیس ندارد — مثل توضیح "
-                "ساختار/اسکیما، تعریف یک اصطلاح، ادامه‌ی تحلیلی روی نتایج کوئری‌های قبلی همین "
-                "گفتگو، یا گفتگوی عادی. پاسخ کامل و نهایی را در پارامتر answer بنویس؛ اگر سوال به "
-                "داده‌های واقعی (عدد، نام، رکورد) نیاز دارد، به‌جای این ابزار حتماً query_database "
-                "را صدا بزن."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "answer": {
-                        "type": "string",
-                        "description": "پاسخ کامل و نهایی به کاربر، به همان زبانی که سوال پرسیده شده",
-                    },
-                },
-                "required": ["answer"],
-            },
-        },
-    }
-
-
 def format_query_result(result: QueryResult, user_question: str = "") -> str:
     if not result.rows:
         return (
