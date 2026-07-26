@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import re
 import uuid
 
@@ -389,9 +390,17 @@ async def _decide_query_or_answer(llm_config, messages: list[dict]) -> dict | No
     decision_messages = messages + [{"role": "system", "content": _DECISION_PROMPT}]
     try:
         raw = await complete_chat(llm_config, decision_messages, temperature=0)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("query/answer decision call failed: %s", exc)
         return None
-    return _parse_json_object(raw)
+    parsed = _parse_json_object(raw)
+    if parsed is None:
+        # Logged (not just swallowed) so a real failure pattern is visible in
+        # `docker compose logs backend` instead of forcing another guess-and-patch
+        # cycle — this is the exact text that needs to be inspected next time this
+        # honest-refusal message shows up.
+        logging.warning("query/answer decision returned unparseable text: %r", raw)
+    return parsed
 
 
 # How often to send an SSE keep-alive comment while no real chunk is ready yet. A data
