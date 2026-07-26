@@ -437,6 +437,25 @@ async def send_message(
 
     messages = build_messages(workspace, history, thread.memory_summary, extra_context, payload.content)
 
+    # Per-mode instruction, mirroring how Chat2DB pairs each QuestionType with its own
+    # prompt. The execution layer enforces the mode regardless (see produce() below);
+    # this just tells the model what is expected so it doesn't have to guess.
+    _MODE_INSTRUCTIONS = {
+        "query": (
+            "کاربر این پیام را در حالت «کوئری روی دیتابیس» فرستاده است: پاسخ باید بر پایه‌ی یک "
+            "کوئری واقعی روی دیتابیس باشد. همین حالا ابزار query_database را با یک کوئری معتبر "
+            "صدا بزن و فقط از نتیجه‌ی واقعیِ آن پاسخ بده — هیچ عدد یا نامی از حافظه ننویس."
+        ),
+        "chat": (
+            "کاربر این پیام را در حالت «گفتگو و اسناد» فرستاده است: نیازی به کوئری روی دیتابیس "
+            "نیست و ابزار کوئری هم در دسترس نیست. از روی اسکیما، اسناد بازیابی‌شده و بخش «منابع "
+            "مرتبط» پاسخ کامل بده. اگر پاسخ دقیق نیاز به داده‌ی واقعی دارد، به‌جای حدس‌زدن بگو که "
+            "کاربر باید همان سؤال را در حالت «کوئری روی دیتابیس» بپرسد."
+        ),
+    }
+    if db_tools and payload.mode in _MODE_INSTRUCTIONS:
+        messages.insert(1, {"role": "system", "content": _MODE_INSTRUCTIONS[payload.mode]})
+
     async def produce(queue: asyncio.Queue) -> None:
         # The tool-retry branch replaces the message list with an augmented copy.
         # Declare the enclosing value explicitly; otherwise Python treats every
@@ -462,7 +481,13 @@ async def send_message(
         MAX_TOOL_ROUNDS = 5
 
         try:
-            if db_tools:
+            if db_tools and payload.mode == "chat":
+                # Chat2DB's ORDINARY_CHAT: the user has explicitly said this question
+                # does not need a live query, so the tool is not offered at all and
+                # there is nothing for the model to skip or stall on. It answers from
+                # the schema + retrieved documents already injected into the context.
+                full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
+            elif db_tools:
                 # A single native tool (query_database), forced when possible. This is
                 # the design that was reliable for most of this session, before a second
                 # "answer_without_query" tool and later a JSON-envelope layer were added
@@ -517,7 +542,20 @@ async def send_message(
                         )
 
                 if not tool_calls:
-                    if content and content.strip():
+                    if payload.mode == "query":
+                        # The user explicitly asked for a database query, so prose is
+                        # not an acceptable substitute here — any numbers in it would be
+                        # unverified. (In "auto" mode the same prose IS accepted, since
+                        # there the model may legitimately have judged that no query was
+                        # needed.)
+                        full_content = (
+                            "این پیام در حالت «کوئری روی دیتابیس» ارسال شد، اما مدل زبانی کوئری‌ای "
+                            "اجرا نکرد و فقط متن نوشت. برای جلوگیری از نمایش داده‌ی تأییدنشده، آن متن "
+                            "نمایش داده نشد. سؤال را کمی مشخص‌تر بپرس (مثلاً نام جدول یا بازه‌ی زمانی "
+                            "را ذکر کن)، یا اگر پاسخ اصلاً نیازی به کوئری ندارد، حالت «گفتگو و اسناد» "
+                            "را انتخاب کن."
+                        )
+                    elif content and content.strip():
                         full_content = content.strip()
                     else:
                         # No tool call and no text either: a genuine model/gateway

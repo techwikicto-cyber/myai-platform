@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ChatMode } from '../api/chat'
 import type { ChatMessage } from '../types'
 
 interface ChatState {
@@ -7,11 +8,13 @@ interface ChatState {
   input: Record<string, string>
   sending: Record<string, boolean>
   error: Record<string, string>
-  
+  mode: Record<string, ChatMode>
+
   setMessages: (threadId: string, msgs: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void
   setInput: (threadId: string, text: string) => void
   setSending: (threadId: string, isSending: boolean) => void
   setError: (threadId: string, msg: string) => void
+  setMode: (threadId: string, mode: ChatMode) => void
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -19,6 +22,7 @@ export const useChatStore = create<ChatState>((set) => ({
   input: {},
   sending: {},
   error: {},
+  mode: {},
 
   setMessages: (threadId, updater) =>
     set((s) => ({
@@ -33,4 +37,6 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => ({ sending: { ...s.sending, [threadId]: isSending } })),
   setError: (threadId, msg) =>
     set((s) => ({ error: { ...s.error, [threadId]: msg } })),
+  setMode: (threadId, mode) =>
+    set((s) => ({ mode: { ...s.mode, [threadId]: mode } })),
 }))

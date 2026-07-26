@@ -1,9 +1,19 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
 from app.models.thread import MessageRole
+
+# Mirrors Chat2DB's QuestionType (ORDINARY_CHAT / NL_2_SQL / ...): the caller declares
+# what kind of question this is instead of the model inferring it from wording. Their
+# client picks the type from context ("console opens as NL_2_SQL"); Bina is a single
+# chat surface, so the user picks it explicitly next to the input box.
+#   auto  — let the model decide (default; unchanged behaviour)
+#   query — must run a real database query; a prose-only reply is rejected
+#   chat  — never query; answer from documents + schema already in context
+ChatMode = Literal["auto", "query", "chat"]
 
 
 class ThreadOut(BaseModel):
@@ -36,6 +46,7 @@ class MessageOut(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str
+    mode: ChatMode = "auto"
 
 
 class PinCreate(BaseModel):

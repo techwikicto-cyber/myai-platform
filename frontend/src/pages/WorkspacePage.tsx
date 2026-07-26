@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
 import { API_BASE } from '../api/client'
-import { chatApi, streamMessage } from '../api/chat'
+import { chatApi, streamMessage, type ChatMode } from '../api/chat'
 import { pinsApi } from '../api/pins'
 import { workspacesApi } from '../api/workspaces'
 import { documentsApi, type DocumentDto } from '../api/documents'
@@ -38,12 +38,13 @@ export default function WorkspacePage() {
   const navigate = useNavigate()
   const threadStore = useThreadStore()
 
-  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, setMessages, setInput, setSending, setError } = useChatStore()
-  
+  const { messages: msgsMap, input: inpsMap, sending: sendMap, error: errMap, mode: modeMap, setMessages, setInput, setSending, setError, setMode } = useChatStore()
+
   const messages = threadId ? (msgsMap[threadId] || []) : []
   const input = threadId ? (inpsMap[threadId] || '') : ''
   const sending = threadId ? (sendMap[threadId] || false) : false
   const error = threadId ? (errMap[threadId] || '') : ''
+  const mode: ChatMode = threadId ? (modeMap[threadId] || 'auto') : 'auto'
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [pins, setPins] = useState<PinDto[]>([])
@@ -189,7 +190,7 @@ export default function WorkspacePage() {
         } else if (event.type === 'error') {
           setError(currentThreadId, event.message)
         }
-      }, controller.signal)
+      }, controller.signal, mode)
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         setError(currentThreadId, err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
@@ -496,12 +497,64 @@ export default function WorkspacePage() {
                 </button>
               )}
             </div>
-            <p className="mt-1.5 px-1 text-[11px] text-muted-foreground/70">
-              Enter برای ارسال — Shift+Enter برای خط جدید
-            </p>
+            <div className="mt-2 flex items-center justify-between gap-3 px-1">
+              {dbConnections.length > 0 && (
+                <ChatModeSelector
+                  value={mode}
+                  onChange={(m) => threadId && setMode(threadId, m)}
+                  disabled={sending}
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground/70">
+                Enter برای ارسال — Shift+Enter برای خط جدید
+              </p>
+            </div>
           </form>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Chat2DB-style explicit intent selection: the user states what kind of question this
+// is instead of the model having to infer it from wording. Only shown when the
+// workspace actually has a database connected — with documents only there is nothing
+// to choose between.
+const CHAT_MODES: { value: ChatMode; label: string; title: string }[] = [
+  { value: 'auto', label: 'خودکار', title: 'مدل خودش تصمیم می‌گیرد که کوئری بزند یا از اسناد پاسخ دهد' },
+  { value: 'query', label: 'کوئری روی دیتابیس', title: 'حتماً روی دیتابیس کوئری اجرا می‌شود؛ پاسخ بدون کوئری پذیرفته نمی‌شود' },
+  { value: 'chat', label: 'گفتگو و اسناد', title: 'بدون کوئری؛ پاسخ فقط از روی اسکیما و اسناد این فضای کاری' },
+]
+
+function ChatModeSelector({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ChatMode
+  onChange: (mode: ChatMode) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-0.5" role="group" aria-label="حالت پاسخ‌دهی">
+      {CHAT_MODES.map((m) => (
+        <button
+          key={m.value}
+          type="button"
+          onClick={() => onChange(m.value)}
+          disabled={disabled}
+          title={m.title}
+          aria-pressed={value === m.value}
+          className={clsx(
+            'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50',
+            value === m.value
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {m.label}
+        </button>
+      ))}
     </div>
   )
 }

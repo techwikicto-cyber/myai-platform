@@ -24,11 +24,21 @@ export type StreamEvent =
   | { type: 'done'; message_id: string; export_ids?: string[] }
   | { type: 'error'; message: string }
 
+/**
+ * How the backend should treat this message. Modelled on Chat2DB's QuestionType: the
+ * caller states what kind of question this is rather than the model inferring it.
+ *   auto  — let the model decide (default)
+ *   query — must run a real database query; a prose-only reply is rejected
+ *   chat  — never query; answer from documents + schema
+ */
+export type ChatMode = 'auto' | 'query' | 'chat'
+
 export async function streamMessage(
   threadId: string,
   content: string,
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
+  mode: ChatMode = 'auto',
 ): Promise<void> {
   const token = useAuthStore.getState().token
   const res = await fetch(`${API_BASE}/threads/${threadId}/messages`, {
@@ -37,7 +47,7 @@ export async function streamMessage(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, mode }),
     signal,
   })
 
