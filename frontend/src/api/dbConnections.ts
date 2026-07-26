@@ -97,3 +97,18 @@ export const ENGINE_LABELS: Record<DbEngine, string> = {
   oracle: 'Oracle',
   mongodb: 'MongoDB',
 }
+
+export interface ConsoleResult {
+  columns: string[]
+  rows: Record<string, unknown>[]
+  truncated: boolean
+  duration_ms: number
+}
+
+/** Runs a hand-written query from the SQL console. Read-only is still enforced server-side. */
+export function executeConsoleQuery(workspaceId: string, connectionId: string, sql: string, rowLimit = 200) {
+  return api.post<ConsoleResult>(`/workspaces/${workspaceId}/db-connections/${connectionId}/execute`, {
+    sql,
+    row_limit: rowLimit,
+  })
+}

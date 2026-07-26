@@ -1,6 +1,9 @@
+import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
+
+from pydantic import BaseModel
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
 from sqlalchemy import delete as sa_delete, select
@@ -10,6 +13,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import require_admin, require_workspace_manager, require_workspace_member
 from app.models.db_connection import DbConnection
+from app.models.query_audit_log import QueryAuditLog, QueryAuditStatus
 from app.models.document import Document, DocumentKind
 from app.models.sharing import DbConnectionWorkspaceShare
 from app.models.user import User
@@ -384,3 +388,71 @@ async def upload_schema_doc(
         status=document.status, error_message=document.error_message,
         shared_workspace_ids=[], created_at=document.created_at,
     )
+
+
+class ConsoleQueryIn(BaseModel):
+    """A hand-written query from the SQL console."""
+
+    sql: str
+    row_limit: int = 200
+
+
+@router.post("/{connection_id}/execute")
+async def execute_console_query(
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    payload: ConsoleQueryIn,
+    membership=Depends(require_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Runs a query the user typed themselves, for the SQL console.
+
+    Read-only enforcement (ensure_readonly_sql, inside the connector) is deliberately
+    NOT relaxed here even though the query is hand-written: these connections point at
+    live production accounting databases, and a console is exactly where a stray UPDATE
+    would do damage. Allowing writes is a separate decision, not a side effect of adding
+    a console.
+
+    Every run is written to the same audit log the assistant's queries use, so console
+    and chat activity share one history.
+    """
+    user, _ = membership
+    conn = await db.get(DbConnection, connection_id)
+    if not conn or conn.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="اتصال پیدا نشد")
+
+    sql = payload.sql.strip()
+    if not sql:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="کوئری خالی است")
+
+    row_limit = max(1, min(payload.row_limit, 1000))
+    started = time.perf_counter()
+    audit = QueryAuditLog(
+        workspace_id=workspace_id,
+        db_connection_id=conn.id,
+        user_id=user.id,
+        raw_query=sql,
+        status=QueryAuditStatus.success,
+    )
+    try:
+        result = await factory.execute_query(conn, sql, row_limit=row_limit)
+    except Exception as exc:  # noqa: BLE001 — surfaced to the user as the query's error
+        audit.status = QueryAuditStatus.failed
+        audit.error_message = str(exc)[:2000]
+        audit.duration_ms = int((time.perf_counter() - started) * 1000)
+        db.add(audit)
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    audit.executed_query = sql
+    audit.row_count = len(result.rows)
+    audit.duration_ms = int((time.perf_counter() - started) * 1000)
+    db.add(audit)
+    await db.commit()
+
+    return {
+        "columns": result.columns,
+        "rows": result.rows,
+        "truncated": result.truncated,
+        "duration_ms": audit.duration_ms,
+    }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useMatch } from 'react-router-dom'
 import clsx from 'clsx'
 import { useAuthStore } from '../store/auth'
-import { IconBook, IconChat, IconLogout, IconSettings } from './icons'
+import { IconBook, IconChat, IconDatabase, IconLogout, IconSettings } from './icons'
 import OwlLogo from './Logo'
 import ProfileModal from './ProfileModal'
 
@@ -27,6 +27,12 @@ export default function NavRail() {
     { to: '/', icon: <IconChat />, label: 'گفتگو', end: true },
     ...(activeWorkspaceId
       ? [
+          {
+            to: `/workspace/${activeWorkspaceId}/console`,
+            icon: <IconDatabase />,
+            label: 'کنسول SQL',
+            end: false,
+          },
           {
             to: `/workspace/${activeWorkspaceId}/knowledge`,
             icon: <IconBook />,

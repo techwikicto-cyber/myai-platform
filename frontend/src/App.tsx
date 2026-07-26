@@ -9,6 +9,7 @@ import AdminUsersPage from './pages/AdminUsersPage'
 import AdminModelSettingsPage from './pages/AdminModelSettingsPage'
 import Layout from './components/Layout'
 import KnowledgePage from './pages/KnowledgePage'
+import ConsolePage from './pages/ConsolePage'
 import { AdminRoute, ProtectedRoute } from './components/ProtectedRoute'
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/workspace/:workspaceId" element={<WorkspacePage />} />
             <Route path="/workspace/:workspaceId/thread/:threadId" element={<WorkspacePage />} />
+            <Route path="/workspace/:workspaceId/console" element={<ConsolePage />} />
             <Route path="/workspace/:workspaceId/knowledge" element={<KnowledgePage />} />
             <Route path="/workspace/:workspaceId/settings" element={<WorkspaceSettingsPage />} />
             <Route element={<AdminRoute />}>
