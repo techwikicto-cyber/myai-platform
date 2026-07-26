@@ -1,40 +1,41 @@
 @import "tailwindcss";
-@import "highlight.js/styles/github-dark.css";
+@import "highlight.js/styles/github.css";
 
-/* Design tokens — dark shell modelled on Chat2DB: near-black violet-tinted surfaces
-   with a violet accent. Hue is held at 285 across every neutral so the greys read as
-   part of the accent family rather than as flat slate. */
+/* Design tokens — Claude-inspired light theme: warm ivory surfaces, terracotta primary. */
 @theme {
   --font-sans: "iranyekan", "Vazirmatn", -apple-system, "Segoe UI", Tahoma, sans-serif;
 
-  --color-background: oklch(0.205 0.011 285);
-  --color-foreground: oklch(0.92 0.004 285);
-  --color-card: oklch(0.245 0.013 285);
-  --color-muted: oklch(0.285 0.014 285);
-  --color-muted-foreground: oklch(0.66 0.014 285);
-  --color-border: oklch(0.33 0.014 285);
-  --color-input: oklch(0.245 0.013 285);
+  --color-background: oklch(0.984 0.004 95);
+  --color-foreground: oklch(0.25 0.008 60);
+  --color-card: oklch(1 0 0);
+  --color-muted: oklch(0.952 0.008 92);
+  --color-muted-foreground: oklch(0.5 0.012 70);
+  --color-border: oklch(0.905 0.01 90);
+  --color-input: oklch(0.97 0.006 95);
 
-  --color-primary: oklch(0.62 0.2 288);
-  --color-primary-hover: oklch(0.67 0.2 288);
-  --color-primary-foreground: oklch(0.99 0.002 285);
-  --color-primary-soft: oklch(0.62 0.2 288 / 18%);
+  --color-primary: oklch(0.64 0.115 40);
+  --color-primary-hover: oklch(0.58 0.12 40);
+  --color-primary-foreground: oklch(0.99 0.005 90);
+  --color-primary-soft: oklch(0.945 0.026 45);
 
-  --color-destructive: oklch(0.66 0.19 25);
-  --color-destructive-soft: oklch(0.66 0.19 25 / 16%);
-  --color-success: oklch(0.7 0.15 155);
-  --color-warning: oklch(0.76 0.15 80);
-  --color-warning-soft: oklch(0.76 0.15 80 / 16%);
-  --color-info: oklch(0.72 0.13 240);
-  --color-info-soft: oklch(0.72 0.13 240 / 16%);
+  --color-destructive: oklch(0.55 0.2 27);
+  --color-destructive-soft: oklch(0.96 0.02 27);
+  --color-success: oklch(0.55 0.12 150);
+  --color-warning: oklch(0.65 0.15 75);
+  /* Soft pairs for the badge variants. These replaced hardcoded Tailwind amber-50 /
+     blue-50 utilities, whose `dark:` companions never applied — the theme switches by
+     token, not by a `dark` class — so the values are now defined in one place. */
+  --color-warning-soft: oklch(0.96 0.03 75);
+  --color-info: oklch(0.5 0.13 240);
+  --color-info-soft: oklch(0.95 0.028 240);
 
-  --color-sidebar: oklch(0.175 0.011 285);
-  --color-sidebar-foreground: oklch(0.9 0.004 285);
-  --color-sidebar-muted: oklch(0.62 0.014 285);
-  --color-sidebar-accent: oklch(0.28 0.015 285);
-  --color-sidebar-border: oklch(0.32 0.014 285 / 60%);
-  --color-sidebar-primary: oklch(0.72 0.17 288);
-  --color-sidebar-primary-bg: oklch(0.62 0.2 288 / 20%);
+  --color-sidebar: oklch(0.962 0.007 95);
+  --color-sidebar-foreground: oklch(0.29 0.01 60);
+  --color-sidebar-muted: oklch(0.5 0.014 70);
+  --color-sidebar-accent: oklch(0.92 0.01 90);
+  --color-sidebar-border: oklch(0.3 0.01 60 / 10%);
+  --color-sidebar-primary: oklch(0.55 0.13 40);
+  --color-sidebar-primary-bg: oklch(0.64 0.115 40 / 13%);
 
   --radius-lg: 0.625rem;
 
@@ -44,7 +45,7 @@
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html, body, #root {
