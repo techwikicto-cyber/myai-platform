@@ -486,6 +486,36 @@ async def send_message(
                         llm_config, messages, db_tools, tool_choice="auto"
                     )
 
+                # Observed failure mode: the model sometimes announces an intent ("بله،
+                # اجرا می‌کنم...") without actually calling the tool in the same turn —
+                # the earlier design just accepted that stall as the final answer,
+                # ending the turn on an unfinished sentence (reads exactly like the
+                # response got cut off, even though the backend completed cleanly). One
+                # retry with an explicit nudge, unconditionally (not gated on what the
+                # question was about), gives it a real chance to either actually call
+                # the tool or write a genuinely complete answer instead of a promise.
+                if not tool_calls and content and content.strip():
+                    nudge_messages = messages + [{
+                        "role": "assistant", "content": content,
+                    }, {
+                        "role": "system",
+                        "content": (
+                            "پیام قبلی‌ات فقط یک وعده بود («الان انجام می‌دهم»، «بگذار کوئری بزنم» و "
+                            "مشابه آن) بدون اینکه واقعاً کاری انجام شود. اگر برای پاسخ باید کوئری بزنی، "
+                            "همین حالا ابزار query_database را با یک کوئری واقعی صدا بزن. اگر واقعاً "
+                            "نیازی به کوئری نیست، همین حالا پاسخ کامل و نهایی را بنویس — نه یک وعده‌ی "
+                            "دیگر."
+                        ),
+                    }]
+                    try:
+                        content, tool_calls = await complete_chat_with_tools(
+                            llm_config, nudge_messages, db_tools, tool_choice="required"
+                        )
+                    except Exception:  # noqa: BLE001
+                        content, tool_calls = await complete_chat_with_tools(
+                            llm_config, nudge_messages, db_tools, tool_choice="auto"
+                        )
+
                 if not tool_calls:
                     if content and content.strip():
                         full_content = content.strip()
