@@ -6,14 +6,22 @@ from pydantic import BaseModel
 
 from app.models.thread import MessageRole
 
-# Mirrors Chat2DB's QuestionType (ORDINARY_CHAT / NL_2_SQL / ...): the caller declares
-# what kind of question this is instead of the model inferring it from wording. Their
-# client picks the type from context ("console opens as NL_2_SQL"); Bina is a single
-# chat surface, so the user picks it explicitly next to the input box.
-#   auto  — let the model decide (default; unchanged behaviour)
-#   query — must run a real database query; a prose-only reply is rejected
-#   chat  — never query; answer from documents + schema already in context
-ChatMode = Literal["auto", "query", "chat"]
+# Mirrors Chat2DB's QuestionType: the caller declares what kind of question this is
+# instead of the model inferring it from wording, and each type is paired with its own
+# prompt. Like theirs, most types are set by the action the user invoked rather than by
+# a setting — explain/optimize/debug are only ever reachable from a button attached to
+# an actual query, which is where their SendParams.sql equivalent comes from too.
+#   auto     — let the model decide (default; their ORDINARY_CHAT)
+#   query    — must run a real database query (their NL_2_SQL)
+#   chat     — never query; answer from documents + schema already in context
+#   explain  — explain the attached query in plain language (their SQL_EXPLAIN)
+#   optimize — suggest a faster/cleaner rewrite (their SQL_OPTIMIZER)
+#   debug    — diagnose why the attached query failed (their SQL_DEBUG)
+ChatMode = Literal["auto", "query", "chat", "explain", "optimize", "debug"]
+
+# Types that reason *about* a query rather than running one. They are handed the SQL
+# directly, so offering the query tool would only invite an unnecessary round-trip.
+SQL_REASONING_MODES = frozenset({"explain", "optimize", "debug"})
 
 
 class ThreadOut(BaseModel):
@@ -50,6 +58,8 @@ class MessageCreate(BaseModel):
     # Tables/collections the user scoped this question to via the composer's "@" picker
     # (Chat2DB's @-mention equivalent). Empty = whole schema, as before.
     tables: list[str] = []
+    # The query an explain/optimize/debug action was invoked on (their SendParams.sql).
+    sql: str | None = None
 
 
 class PinCreate(BaseModel):

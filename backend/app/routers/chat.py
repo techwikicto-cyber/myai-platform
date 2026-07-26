@@ -20,7 +20,16 @@ from app.models.query_audit_log import QueryAuditLog, QueryAuditStatus
 from app.models.thread import Message, MessageRole, Thread
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace
-from app.schemas.thread import MessageCreate, MessageOut, PinCreate, PinOut, ThreadCreate, ThreadOut, ThreadRename
+from app.schemas.thread import (
+    SQL_REASONING_MODES,
+    MessageCreate,
+    MessageOut,
+    PinCreate,
+    PinOut,
+    ThreadCreate,
+    ThreadOut,
+    ThreadRename,
+)
 from app.services.chat_context import build_messages
 from app.services.db_connectors import factory
 from app.services.db_chat import build_db_tools_and_context
@@ -466,9 +475,30 @@ async def send_message(
             "مرتبط» پاسخ کامل بده. اگر پاسخ دقیق نیاز به داده‌ی واقعی دارد، به‌جای حدس‌زدن بگو که "
             "کاربر باید همان سؤال را در حالت «کوئری روی دیتابیس» بپرسد."
         ),
+        "explain": (
+            "کاربر روی یک کوئری مشخص دکمه‌ی «توضیح» را زده است. همان کوئری را گام‌به‌گام و به زبان "
+            "ساده توضیح بده: از چه جدول‌هایی می‌خواند، شرط‌ها و JOINها چه معنایی دارند، و خروجی "
+            "نهایی دقیقاً چه چیزی را نشان می‌دهد. کوئری تازه‌ای ننویس و اجرا نکن."
+        ),
+        "optimize": (
+            "کاربر روی یک کوئری مشخص دکمه‌ی «بهینه‌سازی» را زده است. آن را از نظر کارایی بررسی کن و "
+            "در صورت امکان نسخه‌ی بهتری پیشنهاد بده که **دقیقاً همان نتیجه** را بدهد؛ اگر بهبود "
+            "معناداری ممکن نیست، صریح همین را بگو و کوئری را بی‌دلیل تغییر نده. دلیل هر تغییر را "
+            "کوتاه توضیح بده و نسخه‌ی پیشنهادی را در یک بلوک ```sql بنویس. آن را اجرا نکن."
+        ),
+        "debug": (
+            "کاربر روی یک کوئری که خطا داده دکمه‌ی «رفع خطا» را زده است. علت خطا را پیدا کن، توضیح "
+            "بده چرا رخ داده، و نسخه‌ی اصلاح‌شده را در یک بلوک ```sql بنویس. فقط از جدول‌ها و "
+            "ستون‌هایی استفاده کن که در اسکیما آمده‌اند."
+        ),
     }
-    if db_tools and payload.mode in _MODE_INSTRUCTIONS:
+    if payload.mode in _MODE_INSTRUCTIONS and (db_tools or payload.mode in SQL_REASONING_MODES):
         messages.insert(1, {"role": "system", "content": _MODE_INSTRUCTIONS[payload.mode]})
+
+    # The query the action was invoked on, appended as the concrete subject so the model
+    # reasons about that exact text rather than hunting for it in the history.
+    if payload.mode in SQL_REASONING_MODES and payload.sql:
+        messages.append({"role": "user", "content": f"کوئری مورد نظر:\n```sql\n{payload.sql}\n```"})
 
     async def produce(queue: asyncio.Queue) -> None:
         # The tool-retry branch replaces the message list with an augmented copy.
@@ -495,7 +525,12 @@ async def send_message(
         MAX_TOOL_ROUNDS = 5
 
         try:
-            if db_tools and payload.mode == "chat":
+            if payload.mode in SQL_REASONING_MODES:
+                # explain / optimize / debug: the query is already in the prompt, so
+                # there is nothing to fetch — just answer. Runs even with no database
+                # connected, since reasoning about a query needs no live connection.
+                full_content += await _forward_stream(queue, stream_chat(llm_config, messages))
+            elif db_tools and payload.mode == "chat":
                 # Chat2DB's ORDINARY_CHAT: the user has explicitly said this question
                 # does not need a live query, so the tool is not offered at all and
                 # there is nothing for the model to skip or stall on. It answers from

@@ -5,7 +5,10 @@ import rehypeHighlight from 'rehype-highlight'
 import { API_BASE } from '../api/client'
 import { copyText } from '../lib/clipboard'
 import { useAuthStore } from '../store/auth'
+import type { ChatMode } from '../api/chat'
 import type { ChatMessage } from '../types'
+
+export type SqlActionHandler = (mode: Extract<ChatMode, 'explain' | 'optimize' | 'debug'>, sql: string) => void
 import {
   IconBarChart,
   IconCheckSmall,
@@ -32,8 +35,18 @@ function splitExecutedSql(content: string): { prose: string; sql: string | null 
   return { prose: content.replace(fence, '').replace(/\n{3,}/g, '\n\n').trim(), sql: match[1].trim() }
 }
 
-function ExecutedSql({ sql }: { sql: string }) {
+/**
+ * Chat2DB reaches SQL_EXPLAIN / SQL_OPTIMIZER / SQL_DEBUG from actions sitting next to
+ * the query itself rather than from a mode picked before asking. Same here: these
+ * buttons only exist where a real query does, and they carry that query along.
+ */
+function ExecutedSql({ sql, onSqlAction }: { sql: string; onSqlAction?: SqlActionHandler }) {
   const [open, setOpen] = useState(false)
+  const actions: { mode: 'explain' | 'optimize' | 'debug'; label: string }[] = [
+    { mode: 'explain', label: 'توضیح' },
+    { mode: 'optimize', label: 'بهینه‌سازی' },
+    { mode: 'debug', label: 'رفع خطا' },
+  ]
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-border">
       <button
@@ -47,9 +60,24 @@ function ExecutedSql({ sql }: { sql: string }) {
         </span>
       </button>
       {open && (
-        <pre className="overflow-x-auto bg-background px-3 py-2 text-[11px] leading-relaxed" dir="ltr">
-          <code>{sql}</code>
-        </pre>
+        <>
+          <pre className="overflow-x-auto bg-background px-3 py-2 text-[11px] leading-relaxed" dir="ltr">
+            <code>{sql}</code>
+          </pre>
+          {onSqlAction && (
+            <div className="flex flex-wrap gap-1.5 border-t border-border bg-muted/30 px-2.5 py-1.5">
+              {actions.map((a) => (
+                <button
+                  key={a.mode}
+                  onClick={() => onSqlAction(a.mode, sql)}
+                  className="rounded-md border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -103,11 +131,13 @@ function MessageBubble({
   onEdit,
   isPinned = false,
   onPin,
+  onSqlAction,
 }: {
   message: ChatMessage
   onEdit?: (messageId: string, content: string) => void
   isPinned?: boolean
   onPin?: (messageId: string, content: string) => Promise<void>
+  onSqlAction?: SqlActionHandler
 }) {
   const [showChart, setShowChart] = useState(false)
   const [pinning, setPinning] = useState(false)
@@ -210,7 +240,7 @@ function MessageBubble({
                     {prose}
                   </ReactMarkdown>
                 </div>
-                {sql && <ExecutedSql sql={sql} />}
+                {sql && <ExecutedSql sql={sql} onSqlAction={onSqlAction} />}
                 {showChart && tableData && (
                   <MiniChart headers={tableData.headers} rows={tableData.rows} />
                 )}

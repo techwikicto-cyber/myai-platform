@@ -168,9 +168,28 @@ export default function WorkspacePage() {
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault()
     if (!input.trim() || !threadId || sending) return
-    setError(threadId, '')
     const userText = input.trim()
     setInput(threadId, '')
+    await sendMessage(userText, mode, scopedTables)
+  }
+
+  /**
+   * Chat2DB's SQL actions (explain / optimize / debug) post a normal message carrying
+   * both the action type and the query it was invoked on, so the exchange stays visible
+   * in the thread like any other turn.
+   */
+  const handleSqlAction = useCallback(
+    (actionMode: 'explain' | 'optimize' | 'debug', sql: string) => {
+      const labels = { explain: 'این کوئری را توضیح بده', optimize: 'این کوئری را بهینه کن', debug: 'خطای این کوئری را رفع کن' }
+      void sendMessage(labels[actionMode], actionMode, [], sql)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [threadId, sending],
+  )
+
+  async function sendMessage(userText: string, sendMode: ChatMode, sendTables: string[], sendSql?: string) {
+    if (!threadId || sending) return
+    setError(threadId, '')
     setSending(threadId, true)
 
     const userMsg: ChatMessage = { id: `tmp-user-${Date.now()}`, role: 'user', content: userText }
@@ -215,7 +234,7 @@ export default function WorkspacePage() {
         } else if (event.type === 'error') {
           setError(currentThreadId, event.message)
         }
-      }, controller.signal, mode, scopedTables)
+      }, controller.signal, sendMode, sendTables, sendSql)
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         setError(currentThreadId, err instanceof Error ? err.message : 'خطا در دریافت پاسخ')
@@ -382,6 +401,7 @@ export default function WorkspacePage() {
                 onEdit={m.role === 'user' ? handleEdit : undefined}
                 isPinned={pinnedMessageIds.has(m.id)}
                 onPin={m.role === 'assistant' ? handlePin : undefined}
+                onSqlAction={m.role === 'assistant' ? handleSqlAction : undefined}
               />
             ))}
           </div>

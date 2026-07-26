@@ -27,11 +27,16 @@ export type StreamEvent =
 /**
  * How the backend should treat this message. Modelled on Chat2DB's QuestionType: the
  * caller states what kind of question this is rather than the model inferring it.
- *   auto  — let the model decide (default)
- *   query — must run a real database query; a prose-only reply is rejected
- *   chat  — never query; answer from documents + schema
+ *   auto     — let the model decide (default)
+ *   query    — must run a real database query; a prose-only reply is rejected
+ *   chat     — never query; answer from documents + schema
+ * The rest are invoked from a button attached to a specific query rather than chosen
+ * up front, which is also where the `sql` argument comes from:
+ *   explain  — explain that query in plain language
+ *   optimize — suggest a faster rewrite with the same result
+ *   debug    — diagnose why it failed and fix it
  */
-export type ChatMode = 'auto' | 'query' | 'chat'
+export type ChatMode = 'auto' | 'query' | 'chat' | 'explain' | 'optimize' | 'debug'
 
 export async function streamMessage(
   threadId: string,
@@ -40,6 +45,7 @@ export async function streamMessage(
   signal?: AbortSignal,
   mode: ChatMode = 'auto',
   tables: string[] = [],
+  sql?: string,
 ): Promise<void> {
   const token = useAuthStore.getState().token
   const res = await fetch(`${API_BASE}/threads/${threadId}/messages`, {
@@ -48,7 +54,7 @@ export async function streamMessage(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content, mode, tables }),
+    body: JSON.stringify({ content, mode, tables, sql }),
     signal,
   })
 
